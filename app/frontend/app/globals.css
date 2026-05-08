@@ -1,0 +1,51 @@
+:root {
+  color-scheme: light;
+  --background: #f8f7f3;
+  --foreground: #1f2933;
+  --muted: #5f6b76;
+  --accent: #0f766e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+a {
+  color: inherit;
+}
+
+.shell {
+  min-height: 100vh;
+  padding: 40px;
+}
+
+.panel {
+  max-width: 960px;
+  display: grid;
+  gap: 24px;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.status-tile {
+  border: 1px solid #d7d2c8;
+  border-radius: 8px;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.status-tile strong {
+  display: block;
+  margin-bottom: 8px;
+}

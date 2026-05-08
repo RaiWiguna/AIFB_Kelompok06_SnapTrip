@@ -1,0 +1,30 @@
+{
+  "private": true,
+  "scripts": {
+    "postinstall": "npm run install:all",
+    "install:frontend": "npm install --prefix app/frontend",
+    "install:backend": "cd app/backend && uv sync",
+    "install:all": "npm run install:frontend && npm run install:backend",
+    "dev:frontend": "npm run dev --prefix app/frontend",
+    "dev:backend": "cd app/backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "test:frontend": "npm test --prefix app/frontend",
+    "test:backend": "cd app/backend && uv run pytest",
+    "test:e2e": "npx playwright test --config tests/e2e/playwright.config.ts --pass-with-no-tests",
+    "test": "npm run test:backend && npm run test:frontend && npm run test:e2e",
+    "typecheck:frontend": "npm run typecheck --prefix app/frontend",
+    "typecheck:backend": "cd app/backend && uv run python -m compileall app tests",
+    "typecheck": "npm run typecheck:backend && npm run typecheck:frontend",
+    "lint:frontend": "npm run lint --prefix app/frontend",
+    "lint:backend": "cd app/backend && uv run ruff check .",
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "build:frontend": "npm run build --prefix app/frontend",
+    "build:backend": "cd app/backend && uv run python -m compileall app",
+    "build": "npm run build:backend && npm run build:frontend",
+    "docker:config": "docker compose config && docker compose -f deploy/compose/docker-compose.remote.yml config"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.0",
+    "concurrently": "^9.1.2"
+  }
+}
