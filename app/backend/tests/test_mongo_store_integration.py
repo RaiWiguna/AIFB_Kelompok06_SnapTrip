@@ -1,3 +1,4 @@
+import os
 import subprocess
 
 import pytest
@@ -20,6 +21,8 @@ def docker_available() -> bool:
 async def test_mongo_store_gridfs_and_recommendation_persistence_with_testcontainer():
     if not docker_available():
         pytest.skip("Docker is not available for MongoDB testcontainers")
+    if os.environ.get("SNAPTRIP_RUN_TESTCONTAINERS") != "1":
+        pytest.skip("Set SNAPTRIP_RUN_TESTCONTAINERS=1 to run MongoDB testcontainers")
 
     from testcontainers.mongodb import MongoDbContainer
 
