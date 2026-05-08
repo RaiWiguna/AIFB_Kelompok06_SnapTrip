@@ -1,79 +1,134 @@
 # SnapTrip
 
-SnapTrip adalah MVP rekomendasi perjalanan berbasis AI. Sprint 0 menyiapkan fondasi project, dependency, backend FastAPI minimal, frontend Next.js minimal, PostgreSQL config, dan health check.
+SnapTrip is an AI-native desktop-first web platform for discovering, planning, saving, and sharing trip plans.
 
-## Struktur
+The MVP includes:
 
-```text
-backend/   FastAPI app
-frontend/  Next.js app
-data/      Seed data dan artifact lokal non-database
-models/    Artifact model ML
-tests/     Pytest suite
-docs/      Source of truth product dan contract
-```
+- Explore feed for public Trip Plans.
+- Likes and save-to-collection flows.
+- Image-based tourism category classification.
+- Curated Indonesian destination recommendations using Google Places API and Gemini through the backend.
+- Agentic AI Trip Planner after deployment foundation is in place.
+- Structured Trip Memo, Full Itinerary, and Budget Plan documents.
+- Share invite links and participant visibility.
 
-## Setup
+## Source of Truth
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-copy .env.example .env
-```
+The canonical product and implementation documents live in `.agents/`:
 
-Siapkan PostgreSQL lokal dengan database dan user sesuai `.env.example`, atau ubah `DATABASE_URL` di `.env`.
+- `.agents/PRD.md`
+- `.agents/implementationPhase.md`
+- `.agents/rules.md`
+- `.agents/sessionHandoff.md`
 
-Opsi cepat dengan Docker:
+Earlier drafts and old README assumptions are annulled when they conflict with `.agents/PRD.md`.
 
-```bash
-docker compose -f infra/docker/docker-compose.yml up -d
-```
-
-## Run Backend
-
-```bash
-uvicorn backend.app.main:app --reload
-```
-
-Health check:
+## Repository Layout
 
 ```text
-http://127.0.0.1:8000/health
-http://127.0.0.1:8000/api/health
+.
+|-- .agents/
+|-- .github/
+|   `-- workflows/
+|-- app/
+|   |-- backend/
+|   |   |-- app/
+|   |   `-- tests/
+|   `-- frontend/
+|       |-- app/
+|       |-- components/
+|       |-- lib/
+|       `-- tests/
+|-- deploy/
+|   |-- caddy/
+|   |-- compose/
+|   |-- env/
+|   `-- scripts/
+|-- docs/
+|   `-- adr/
+|-- tests/
+|   `-- e2e/
+|-- training/
+|   |-- data/
+|   |-- notebook/
+|   `-- output/
+|-- docker-compose.yml
+`-- package.json
 ```
 
-Session API:
+Runtime code belongs under:
 
-```text
-POST http://127.0.0.1:8000/api/sessions
-GET  http://127.0.0.1:8000/api/sessions/{session_id}
-```
+- `app/backend/` for Python FastAPI, `uv`, MongoDB/GridFS, classifier, and provider integrations.
+- `app/frontend/` for Next.js, TypeScript, React, and Vitest.
 
-Endpoint session akan membuat tabel database dan seed destinasi awal saat dipanggil.
+Offline model-training assets belong under `training/` and must stay separate from runtime code.
 
-## Run Frontend
+## Tech Stack
+
+- Frontend: Next.js, Node.js, TypeScript, Vitest.
+- Backend: Python FastAPI, `uv`, PyTorch, pytest, pytest-asyncio, httpx.
+- Database: self-hosted MongoDB.
+- Image storage: MongoDB GridFS.
+- Backend integration tests: MongoDB via testcontainers.
+- E2E tests: Playwright.
+- Deployment: one VM, Docker Compose, Caddy.
+
+## Root Scripts
+
+Root npm is the standard entrypoint for both frontend and backend workflows. Backend commands must run through `uv`.
+
+Expected root commands:
 
 ```bash
-cd frontend
 npm install
 npm run dev
+npm run test
+npm run typecheck
+npm run lint
+npm run build
+npm run docker:config
 ```
 
-Default frontend URL:
+Expected script behavior:
 
-```text
-http://localhost:3000
-```
+- `npm install` installs root tooling, frontend dependencies, and backend `uv` environment.
+- `npm run dev` runs frontend and backend dev servers.
+- `npm run test` runs backend pytest, frontend tests, and Playwright E2E where configured.
+- `npm run typecheck` runs frontend TypeScript checks and backend static validation.
+- `npm run lint` runs frontend lint and backend lint/format checks.
+- `npm run build` runs frontend build and backend build-validation checks.
+- `npm run docker:config` validates local and remote Docker Compose config.
 
-Frontend membaca backend dari:
+The root `package.json` is not implemented yet in the current scaffold. Follow `.agents/PRD.md` and `.agents/implementationPhase.md` when adding it.
 
-```text
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
-```
+## Local Development Status
 
-## Tests
+The repository is currently a clean scaffold. Runtime code, package files, Docker Compose, deployment scripts, and GitHub Actions still need to be implemented.
 
-```bash
-pytest
-```
+Recommended next start:
+
+1. Add root `package.json`.
+2. Add local `.env.local` placeholder files with fake values.
+3. Add local `docker-compose.yml` for MongoDB.
+4. Add `app/backend/pyproject.toml` and `uv.lock`.
+5. Add FastAPI app foundation and health/readiness endpoints.
+
+## Deployment Targets
+
+- Web: `https://snaptrip.site`
+- API: `https://api.snaptrip.site`
+
+Production deployment uses:
+
+- `deploy/compose/docker-compose.remote.yml`
+- `deploy/caddy/Caddyfile`
+- `deploy/scripts/*`
+- `/opt/snaptrip/hosted/releases/<sha>`
+- `/opt/snaptrip/hosted/current`
+- `/opt/snaptrip/hosted/shared`
+
+Root `docker-compose.yml` is local development only.
+
+## Contributing
+
+See `CONTRIBUTING.md`.
