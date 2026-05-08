@@ -7,6 +7,7 @@ from app.api import (
     explore,
     health,
     images,
+    recommendations,
     seeds,
     trip_creation,
     trip_plans,
@@ -22,3 +23,4 @@ api_router.include_router(collections.router, prefix="/collections", tags=["coll
 api_router.include_router(trip_creation.router, prefix="/trip-creation-sessions", tags=["trip-creation"])
 api_router.include_router(images.router, prefix="/images", tags=["images"])
 api_router.include_router(seeds.router, prefix="/destination-seeds", tags=["destination-seeds"])
+api_router.include_router(recommendations.router, tags=["recommendations"])

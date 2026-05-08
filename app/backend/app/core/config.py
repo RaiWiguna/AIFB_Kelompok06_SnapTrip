@@ -25,7 +25,11 @@ class Settings(BaseSettings):
     classifier_model_version: str = "2026-05-mvp"
     classifier_mode: str = "mock"
     gemini_api_key: str = ""
-    gemini_model: str = ""
+    gemini_model: str = "gemini-3-flash-preview"
+    google_api_key: str = ""
+    google_genai_use_vertexai: bool = False
+    google_cloud_project: str = ""
+    google_cloud_location: str = "global"
     google_places_api_key: str = ""
     use_google_places: bool = False
     use_gemini: bool = False

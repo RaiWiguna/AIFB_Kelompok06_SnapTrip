@@ -216,7 +216,7 @@ Exit criteria:
 
 ## 9. Phase 5 - Google Places and Gemini Recommendation Backend
 
-Status: Pending.
+Status: Complete in backend implementation.
 
 Execution list:
 
@@ -236,7 +236,7 @@ Exit criteria:
 
 ## 10. Phase 6 - Backend Tests and Pre-planner Contract Freeze
 
-Status: Pending.
+Status: In progress.
 
 Execution list:
 
@@ -245,6 +245,12 @@ Execution list:
 - Test GridFS upload/retrieve.
 - Test Places/Gemini providers with mocked clients.
 - Freeze pre-planner API contracts for frontend.
+
+Current implementation notes:
+
+- Recommendation fallback, Gemini repair, grounded context construction, Places normalization, selected recommendation persistence, and root backend tests are implemented.
+- Mongo image storage now uses a real Motor GridFS bucket path instead of the previous placeholder collection.
+- Initial MongoDB testcontainers coverage is present for recommendation persistence and GridFS upload/retrieve, but it skips when Docker is unavailable; additional provider transport cases should still be added before the pre-planner backend contract is considered fully frozen.
 
 Exit criteria:
 

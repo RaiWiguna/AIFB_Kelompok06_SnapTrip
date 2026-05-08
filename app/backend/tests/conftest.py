@@ -5,17 +5,24 @@ os.environ["MONGODB_URI"] = "memory://snaptrip"
 os.environ["APP_ENV"] = "test"
 os.environ["CLASSIFIER_MODE"] = "mock"
 os.environ["SESSION_SECRET"] = "test-session-secret"
+os.environ["USE_GEMINI"] = "false"
+os.environ["USE_GOOGLE_PLACES"] = "false"
+os.environ["GEMINI_API_KEY"] = ""
+os.environ["GOOGLE_PLACES_API_KEY"] = ""
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.core.app import create_app
+from app.core.config import get_settings
 
 
 @pytest.fixture
 def client():
+    get_settings.cache_clear()
     with TestClient(create_app()) as test_client:
         yield test_client
+    get_settings.cache_clear()
 
 
 def signup(client: TestClient, email: str = "user@example.com", password: str = "password123"):
