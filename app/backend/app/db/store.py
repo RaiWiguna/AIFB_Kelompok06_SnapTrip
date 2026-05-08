@@ -4,8 +4,9 @@ import copy
 from datetime import UTC, datetime
 from typing import Any
 
+from bson import ObjectId
 from fastapi import UploadFile
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 from pymongo import ASCENDING
 
 from app.core.config import Settings
@@ -51,6 +52,9 @@ class MemoryStore(BaseStore):
                 "tripCreationSessions",
                 "classificationResults",
                 "destinationSeeds",
+                "placeEnrichments",
+                "recommendationRuns",
+                "recommendationItems",
             )
         }
         self.gridfs: dict[str, bytes] = {}
@@ -122,6 +126,12 @@ class MemoryStore(BaseStore):
         self.collections["uploadedImages"][image_id] = metadata
         return public_doc(metadata)
 
+    async def get_image_bytes(self, image_id: str) -> bytes | None:
+        image = self.collections["uploadedImages"].get(image_id)
+        if not image:
+            return None
+        return self.gridfs.get(image["gridfs_id"])
+
 
 class MongoStore(BaseStore):
     def __init__(self, settings: Settings):
@@ -146,6 +156,11 @@ class MongoStore(BaseStore):
             [("collection_id", ASCENDING), ("trip_plan_id", ASCENDING)], unique=True
         )
         await self.db.destinationSeeds.create_index([("categories", ASCENDING)])
+        await self.db.placeEnrichments.create_index([("seed_id", ASCENDING)])
+        await self.db.placeEnrichments.create_index([("expires_at", ASCENDING)])
+        await self.db.recommendationRuns.create_index([("session_id", ASCENDING), ("owner_id", ASCENDING)])
+        await self.db.recommendationItems.create_index([("run_id", ASCENDING), ("rank", ASCENDING)])
+        await self.db.recommendationItems.create_index([("session_id", ASCENDING), ("owner_id", ASCENDING)])
 
     async def ready(self) -> dict[str, Any]:
         try:
@@ -194,8 +209,17 @@ class MongoStore(BaseStore):
     async def save_image(self, owner_id: str, file: UploadFile, data: bytes) -> dict[str, Any]:
         assert self.db is not None
         image_id = new_id("img")
-        bucket = self.db[self.settings.gridfs_bucket]
-        await bucket.insert_one({"id": image_id, "data": data, "created_at": now()})
+        bucket = AsyncIOMotorGridFSBucket(self.db, bucket_name=self.settings.gridfs_bucket)
+        gridfs_id = await bucket.upload_from_stream(
+            file.filename or image_id,
+            data,
+            metadata={
+                "snaptrip_image_id": image_id,
+                "owner_id": owner_id,
+                "content_type": file.content_type,
+                "checksum_sha256": sha256_bytes(data),
+            },
+        )
         metadata = {
             "id": image_id,
             "owner_id": owner_id,
@@ -203,12 +227,26 @@ class MongoStore(BaseStore):
             "content_type": file.content_type,
             "size_bytes": len(data),
             "checksum_sha256": sha256_bytes(data),
-            "gridfs_id": image_id,
+            "gridfs_id": str(gridfs_id),
             "created_at": now(),
             "updated_at": now(),
         }
         await self.save_doc("uploadedImages", metadata)
         return public_doc(metadata)
+
+    async def get_image_bytes(self, image_id: str) -> bytes | None:
+        assert self.db is not None
+        image = await self.find_one("uploadedImages", id=image_id)
+        if not image:
+            return None
+        bucket = AsyncIOMotorGridFSBucket(self.db, bucket_name=self.settings.gridfs_bucket)
+        gridfs_id = image["gridfs_id"]
+        try:
+            object_id = ObjectId(gridfs_id)
+        except Exception:
+            return None
+        stream = await bucket.open_download_stream(object_id)
+        return await stream.read()
 
 
 def create_store(settings: Settings) -> MemoryStore | MongoStore:
