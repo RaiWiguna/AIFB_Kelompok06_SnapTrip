@@ -39,7 +39,7 @@
   - `docs/adr/`
   - `tests/e2e/`
   - `training/{data,notebook,output}/`
-- Added initial ADRs under `docs/adr/`.
+- Added a single consolidated baseline ADR at `docs/adr/0001-snaptrip-mvp-architecture-baseline.md`.
 
 ## 2. Current Repo Facts
 

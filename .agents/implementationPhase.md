@@ -862,17 +862,20 @@ Handoff:
 - Update roadmap status.
 - Revise README only after it is no longer annulled.
 
-## 22. ADR Backlog
+## 22. ADR Baseline and Future ADRs
 
-Create these ADRs as implementation begins:
+The initial architecture baseline is consolidated into one ADR:
 
-- `0001-use-mongodb-gridfs-for-snaptrip-storage.md`
-- `0002-use-root-npm-orchestration-with-backend-uv.md`
-- `0003-use-single-vm-docker-compose-caddy-runtime.md`
-- `0004-keep-ai-providers-backend-only.md`
-- `0005-version-structured-trip-documents.md`
-- `0006-delay-agentic-planner-until-after-deployment-foundation.md`
-- `0007-keep-training-directory-off-runtime-path.md`
+- `docs/adr/0001-snaptrip-mvp-architecture-baseline.md`
+
+Create additional ADRs only when a later implementation session introduces or changes a durable technical decision that is not already covered by the baseline ADR.
+
+Likely future ADR candidates:
+
+- Versioned structured Trip Memo, Full Itinerary, and Budget Plan document schemas.
+- MongoDB index and lifecycle strategy after repositories are implemented.
+- Deployment rollback and backup procedure after scripts are implemented.
+- Agentic planner tool boundary after planner implementation begins.
 
 ## 23. CI/CD Path Filter Contract
 
