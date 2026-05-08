@@ -4,77 +4,81 @@
 | --- | --- |
 | Document status | Active handoff |
 | Last updated | 2026-05-08 |
-| Branch | `feat/snaptrip-prd-replacement` |
-| Purpose | Resume point after PRD replacement, roadmap/rules alignment, clean scaffold, and initial ADR creation |
+| Branch | `feat/snaptrip-foundation` |
+| Purpose | Resume point after Phase 1-4 foundation implementation |
 
 ## 1. Completed This Session
 
-- Replaced `.agents/PRD.md` as the canonical SnapTrip MVP technical PRD.
-- Reformatted PRD into structured Markdown with:
-  - metadata table,
-  - goals/non-goals,
-  - users and roles,
-  - end-to-end flows,
-  - functional requirements,
-  - domain model,
-  - API contracts,
-  - AI/provider requirements,
-  - architecture,
-  - repository layout,
-  - root npm/uv orchestration,
-  - deployment and CI/CD rules,
-  - acceptance criteria and test scenarios.
-- Updated `.agents/implementationPhase.md` to match the PRD.
-- Rewrote `.agents/rules.md` as the active operating rules for future Codex sessions.
-- Removed LOOM/path references from deployment documentation and replaced them with explicit SnapTrip deploy-script requirements.
-- Moved runtime scaffold to:
-  - `app/backend/`
-  - `app/frontend/`
-- Added scaffold directories with `.gitkeep` for:
-  - `.github/workflows/`
-  - `app/backend/app/{api,core,db,schemas,services,providers,ai}/`
-  - `app/backend/tests/`
-  - `app/frontend/{app,components,lib,tests}/`
-  - `deploy/{caddy,compose,env,scripts}/`
-  - `docs/adr/`
-  - `tests/e2e/`
-  - `training/{data,notebook,output}/`
-- Added a single consolidated baseline ADR at `docs/adr/0001-snaptrip-mvp-architecture-baseline.md`.
+- Created branch `feat/snaptrip-foundation` from `feat/snaptrip-prd-replacement`.
+- Implemented Phase 1 root workflow:
+  - root `package.json` orchestration,
+  - backend `uv` project and lockfile,
+  - frontend Next.js/Vitest baseline,
+  - local and remote Compose config stubs,
+  - tracked `.env.local.example` placeholders and ignored real local env files.
+- Implemented Phase 2 backend foundation:
+  - FastAPI app factory,
+  - CORS, request ID middleware, safe error envelopes,
+  - `/health`, `/api/health`, `/ready`,
+  - Mongo-backed store plus memory-backed test store,
+  - GridFS-style image metadata path,
+  - session-cookie auth with normalized email and Argon2 password hashing.
+- Implemented Phase 3 backend product APIs:
+  - Explore with canonical category filters,
+  - Trip Plan read authorization,
+  - idempotent like/unlike,
+  - owner-only collections and collection item save/remove.
+- Implemented Phase 4 backend product APIs:
+  - trip creation sessions,
+  - JPG/PNG upload validation and metadata persistence,
+  - canonical category endpoint and validation,
+  - mock-default classifier boundary with real MobileNetV2 loader placeholder,
+  - classification aggregation,
+  - manual category confirmation,
+  - curated Indonesian destination seeds.
+- Added backend and frontend tests for the implemented foundation paths.
+- Added `.gitignore` for local dependencies, env files, caches, build output, and editor/OS files.
+- Added `docs/adr/0002-runtime-foundation-and-storage-boundaries.md` to record runtime foundation, storage/test boundaries, classifier mode, and compose placeholder decisions.
 
 ## 2. Current Repo Facts
 
-- The previous top-level `backend/`, `frontend/`, old `README.md`, old `.env.example`, old `infra/docker`, old `requirements.txt`, and old test files are intentionally deleted from the working tree as part of the user-requested start-from-scratch reset.
 - `.agents/` must be preserved. It is the current source-of-truth layer.
 - Runtime app code must be created under `app/backend/` and `app/frontend/`.
 - `training/**`, `docs/**`, and `.agents/**` are non-runtime paths and must not trigger hosted-runtime CI/CD or production deploy when changed by themselves.
 - Root npm scripts must orchestrate frontend npm and backend `uv`.
 - Agentic planner implementation is intentionally sequenced after Docker, remote compose, Caddy, and GitHub Actions deployment foundation.
+- Backend tests use `SNAPTRIP_STORAGE=memory` through test setup. Runtime defaults remain MongoDB-oriented.
+- Classifier local/test default is `CLASSIFIER_MODE=mock`; `real` mode intentionally requires a future trained artifact and implementation completion.
+- Root `npm run test` runs backend, frontend, and Playwright with `--pass-with-no-tests` until runnable E2E specs and app startup orchestration are added.
 
 ## 3. Verification Run
 
-Documentation/scaffold validation performed:
+Verification performed on `feat/snaptrip-foundation`:
 
-- Searched `.agents` for LOOM/path references; none remain in Markdown.
-- Checked root package script contract references in PRD and implementation roadmap.
-- Checked scaffold `.gitkeep` files under `app/`, `deploy/`, `docs/`, `tests/`, `training/`, and `.github/`.
-- Checked git branch and remote before commit/push.
-
-No runtime tests were run because runtime code has not been scaffolded yet beyond directories.
+- `npm run test:backend` passed: 10 backend tests.
+- `npm run test:frontend` passed: 1 frontend test.
+- `npm run lint` passed.
+- `npm run typecheck` passed.
+- `npm run test` passed.
+- `npm run build` passed.
+- `npm run docker:config` passed for local compose and the current remote Mongo stub compose.
 
 ## 4. Known Caveats
 
-- The repo currently has no implemented backend or frontend runtime files after reset.
-- Root `package.json`, `docker-compose.yml`, `app/backend/pyproject.toml`, `app/backend/uv.lock`, frontend package files, FastAPI app, Next.js app, deployment scripts, and GitHub Actions still need to be created.
-- Existing tracked deletions are expected and should not be reverted unless the user explicitly changes direction.
-- No real secrets should be added to `.env.local` or deployment env examples.
+- Mongo runtime integration is implemented at the store level, but the current automated tests use the in-memory store. Future Phase 6 work should add testcontainers MongoDB/GridFS coverage.
+- The Mongo image binary path stores bytes in a Mongo collection shaped as a GridFS placeholder. Future hardening should switch this to Motor GridFS bucket APIs before production deployment.
+- The remote compose file is intentionally a minimal valid Mongo stub so `npm run docker:config` passes during Phase 1-4. Phase 10 must replace it with full Caddy/API/web/Mongo production topology.
+- The real MobileNetV2 classifier path is a boundary placeholder; mock mode is the supported local/test default until a trained `.pt` artifact is promoted.
+- No real secrets should be added to `.env.local`, `.env.local.example`, or deployment env examples.
+- ADR `docs/adr/0002-runtime-foundation-and-storage-boundaries.md` captures the durable implementation caveats and follow-up hardening work without tying those decisions to roadmap phase labels.
 
 ## 5. Recommended Next Start
 
-Start with Phase 1 from `.agents/implementationPhase.md`:
+Continue with Phase 5 from `.agents/implementationPhase.md`:
 
-1. Add root `package.json` with the documented npm-to-uv orchestration scripts.
-2. Add placeholder `.env.local` files with fake local values.
-3. Add `docker-compose.yml` for local MongoDB.
-4. Add `app/backend/pyproject.toml` and initialize `uv` dependency management.
-5. Add minimal FastAPI app, settings, MongoDB/GridFS clients, and health/readiness endpoints.
-6. Add auth foundation after backend app startup is stable.
+1. Implement Google Places provider with mocked tests and timeout/fallback behavior.
+2. Normalize and cache place enrichment.
+3. Generate destination candidates from confirmed categories and destination seeds.
+4. Implement Gemini recommendation adapter with structured JSON validation, retry once, and deterministic fallback.
+5. Persist `RecommendationRun` and `RecommendationItem` records.
+6. Add recommendation API tests while keeping provider keys backend-only and mocked by default.

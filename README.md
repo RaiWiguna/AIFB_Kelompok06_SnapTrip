@@ -99,19 +99,22 @@ Expected script behavior:
 - `npm run build` runs frontend build and backend build-validation checks.
 - `npm run docker:config` validates local and remote Docker Compose config.
 
-The root `package.json` is not implemented yet in the current scaffold. Follow `.agents/PRD.md` and `.agents/implementationPhase.md` when adding it.
+The root `package.json` is implemented and should remain the standard command surface.
 
 ## Local Development Status
 
-The repository is currently a clean scaffold. Runtime code, package files, Docker Compose, deployment scripts, and GitHub Actions still need to be implemented.
+Phase 1-4 foundation runtime is implemented on `feat/snaptrip-foundation`.
 
-Recommended next start:
+Implemented foundations:
 
-1. Add root `package.json`.
-2. Add local `.env.local` placeholder files with fake values.
-3. Add local `docker-compose.yml` for MongoDB.
-4. Add `app/backend/pyproject.toml` and `uv.lock`.
-5. Add FastAPI app foundation and health/readiness endpoints.
+- Root npm scripts for install, dev, test, typecheck, lint, build, and Docker config.
+- FastAPI backend with health/readiness, auth, Explore, likes, collections, trip creation sessions, image upload metadata, mock classifier flow, category confirmation, and destination seeds.
+- Next.js frontend placeholder with TypeScript and Vitest baseline.
+- Local MongoDB compose and a minimal remote compose placeholder.
+
+Copy `.env.local.example`, `app/backend/.env.local.example`, and `app/frontend/.env.local.example` to local `.env.local` files for development values. Real `.env.local` files are ignored.
+
+Recommended next start is Phase 5 from `.agents/implementationPhase.md`: Google Places enrichment, Gemini structured recommendations, recommendation persistence, and provider-mocked tests.
 
 ## Deployment Targets
 
