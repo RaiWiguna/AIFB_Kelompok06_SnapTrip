@@ -107,8 +107,21 @@ Current traceability sources:
 - `docs/adr/`
   - accepted architecture decisions,
   - frozen runtime, contract, provider, storage, and topology choices future sessions should not silently re-decide.
+- `README.md`
+  - public project overview,
+  - repository layout summary,
+  - developer entrypoint summary,
+  - local/deployment status summary.
+- `CONTRIBUTING.md`
+  - branch naming rules,
+  - commit message rules,
+  - checks expected before commit,
+  - root script contract summary,
+  - PR expectations.
 
-If a dedicated requirement traceability matrix is added later, treat it as the first stop for PRD-to-code coverage checks. Until then, use `.agents/PRD.md`, `.agents/implementationPhase.md`, and relevant ADRs together for traceability.
+`README.md` and `CONTRIBUTING.md` are contributor-facing summaries. They must not override `.agents/PRD.md`, `.agents/implementationPhase.md`, `.agents/rules.md`, or accepted ADRs. If they conflict, update them to match the `.agents/` source of truth.
+
+If a dedicated requirement traceability matrix is added later, treat it as the first stop for PRD-to-code coverage checks. Until then, use `.agents/PRD.md`, `.agents/implementationPhase.md`, relevant ADRs, `README.md`, and `CONTRIBUTING.md` together for traceability.
 
 Update these when requirement-to-implementation mapping changes or when the recommended next work changes materially.
 
@@ -146,12 +159,14 @@ For most implementation sessions, read in this order:
 3. `.agents/implementationPhase.md`
 4. `.agents/PRD.md`
 5. relevant `docs/adr/` entries when the task touches architecture, contracts, runtime behavior, storage, AI providers, deployment shape, CI/CD, or security
+6. `README.md` and `CONTRIBUTING.md` when the task affects contributor workflow, public project guidance, branch naming, checks, scripts, or onboarding
 
 For docs-only sessions, read:
 
 1. `.agents/rules.md`
 2. the target document
 3. `.agents/PRD.md` or `.agents/implementationPhase.md` if the target document references product or execution facts
+4. `README.md` and `CONTRIBUTING.md` when updating contributor-facing docs or repo onboarding docs
 
 For deployment/CI/CD sessions, read:
 
@@ -159,7 +174,8 @@ For deployment/CI/CD sessions, read:
 2. `.agents/implementationPhase.md`
 3. `.agents/PRD.md`
 4. relevant `docs/adr/` deployment/runtime entries, if present
-5. actual files under `deploy/`, `.github/workflows/`, root `package.json`, and Compose files when they exist
+5. `README.md` and `CONTRIBUTING.md`
+6. actual files under `deploy/`, `.github/workflows/`, root `package.json`, and Compose files when they exist
 
 ## 4. When To Update Existing Files
 
@@ -191,6 +207,23 @@ Update `.agents/sessionHandoff.md` or create a dated handoff when:
 - verification results matter for the next session,
 - blockers or caveats should not be rediscovered,
 - the next recommended start changes.
+
+Update `README.md` when:
+
+- repository layout changes,
+- project overview changes,
+- setup commands or root script expectations change,
+- local development status changes,
+- deployment target summary changes.
+
+Update `CONTRIBUTING.md` when:
+
+- branch naming rules change,
+- commit message rules change,
+- required pre-commit checks change,
+- root script contract changes,
+- CI/CD path rules change,
+- PR expectations change.
 
 Update or add an ADR when:
 
