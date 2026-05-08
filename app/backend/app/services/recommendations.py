@@ -138,6 +138,8 @@ class RecommendationService:
         now = datetime.now(UTC)
         for enrichment in sorted(cached, key=lambda item: item.get("updated_at") or now, reverse=True):
             expires_at = enrichment.get("expires_at")
+            if expires_at and expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
             if not expires_at or expires_at > now:
                 return enrichment
 

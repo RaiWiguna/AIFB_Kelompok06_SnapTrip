@@ -27,6 +27,8 @@ async def optional_user(
     if not session or session.get("revoked_at"):
         return None
     expires_at = session.get("expires_at")
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
     if expires_at and expires_at < datetime.now(UTC):
         return None
     return await store.find_one("users", id=session["user_id"])

@@ -68,7 +68,7 @@ class GeminiRecommendationProvider:
         client = genai.Client()
         config = types.GenerateContentConfig(
             response_mime_type="application/json",
-            response_json_schema=RecommendationRunOutputV1,
+            response_json_schema=RecommendationRunOutputV1.model_json_schema(),
             system_instruction=SYSTEM_INSTRUCTION,
             safety_settings=[
                 types.SafetySetting(
@@ -90,12 +90,15 @@ class GeminiRecommendationProvider:
             ],
         )
 
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=self.settings.gemini_model,
-            contents=prompt,
-            config=config,
-        )
+        try:
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=self.settings.gemini_model,
+                contents=prompt,
+                config=config,
+            )
+        except Exception as exc:
+            raise GeminiValidationFailure(f"Gemini provider request failed: {exc}", "") from exc
         raw_output = response.text or ""
         if not raw_output:
             raise GeminiValidationFailure("Gemini returned an empty or blocked response.", raw_output)
