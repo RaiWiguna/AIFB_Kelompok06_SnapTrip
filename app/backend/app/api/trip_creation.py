@@ -4,7 +4,9 @@ from app.api.deps import get_settings_from_app, get_store, require_user
 from app.core.categories import validate_categories
 from app.core.ids import new_id
 from app.schemas.api import ConfirmCategoriesRequest, TripCreationSessionCreateRequest
+from app.schemas.recommendations import SelectedRecommendationsRequest
 from app.services.classifier import aggregate_predictions, get_classifier
+from app.services.recommendations import RecommendationService
 
 router = APIRouter()
 
@@ -139,3 +141,37 @@ async def confirm_categories(
         {"confirmed_categories": categories, "status": "categories_confirmed"},
     )
     return {"session": session}
+
+
+@router.post("/{session_id}/recommendations")
+async def generate_recommendations(
+    session_id: str,
+    store=Depends(get_store),
+    settings=Depends(get_settings_from_app),
+    user=Depends(require_user),
+):
+    service = RecommendationService(store=store, settings=settings)
+    return await service.generate_for_session(session_id, user)
+
+
+@router.get("/{session_id}/recommendations")
+async def list_recommendations(
+    session_id: str,
+    store=Depends(get_store),
+    settings=Depends(get_settings_from_app),
+    user=Depends(require_user),
+):
+    service = RecommendationService(store=store, settings=settings)
+    return {"runs": await service.list_session_runs(session_id, user)}
+
+
+@router.post("/{session_id}/selected-recommendations")
+async def select_recommendations(
+    session_id: str,
+    payload: SelectedRecommendationsRequest,
+    store=Depends(get_store),
+    settings=Depends(get_settings_from_app),
+    user=Depends(require_user),
+):
+    service = RecommendationService(store=store, settings=settings)
+    return await service.select_items(session_id, user, payload.recommendation_item_ids)

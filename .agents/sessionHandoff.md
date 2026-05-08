@@ -39,6 +39,15 @@
 - Added backend and frontend tests for the implemented foundation paths.
 - Added `.gitignore` for local dependencies, env files, caches, build output, and editor/OS files.
 - Added `docs/adr/0002-runtime-foundation-and-storage-boundaries.md` to record runtime foundation, storage/test boundaries, classifier mode, and compose placeholder decisions.
+- Implemented Phase 5 backend recommendation flow:
+  - Google Places provider boundary with field-mask based Places API (New) requests and deterministic seed fallback.
+  - normalized `placeEnrichments` cache records with backend-safe photo descriptors.
+  - official `google-genai` SDK provider boundary with schema-constrained Gemini structured output.
+  - versioned `destination_recommendation.v1` prompt/context/repair prompt module.
+  - Pydantic `RecommendationRunOutputV1` and recommendation item schemas.
+  - recommendation generation, persisted run retrieval, and selected recommendation APIs.
+- Replaced the Mongo image-byte placeholder path with Motor GridFS bucket upload/read helpers.
+- Added backend tests for deterministic fallback, grounded Gemini context, Gemini repair, recommendation selection, Places normalization, and optional MongoDB testcontainers GridFS/recommendation persistence coverage.
 
 ## 2. Current Repo Facts
 
@@ -63,22 +72,29 @@ Verification performed on `feat/snaptrip-foundation`:
 - `npm run build` passed.
 - `npm run docker:config` passed for local compose and the current remote Mongo stub compose.
 
+Additional verification after recommendation implementation:
+
+- `npm run test` passed: backend 15 passed / 1 skipped, frontend 1 test, Playwright no-test harness.
+- `npm run lint` passed.
+- `npm run typecheck` passed.
+- `npm run build` passed.
+- `npm run docker:config` passed.
+
 ## 4. Known Caveats
 
 - Mongo runtime integration is implemented at the store level, but the current automated tests use the in-memory store. Future Phase 6 work should add testcontainers MongoDB/GridFS coverage.
-- The Mongo image binary path stores bytes in a Mongo collection shaped as a GridFS placeholder. Future hardening should switch this to Motor GridFS bucket APIs before production deployment.
+- Mongo image binary writes now use Motor GridFS bucket APIs. Initial testcontainers coverage exists, but it skipped locally because Docker Desktop was not running.
 - The remote compose file is intentionally a minimal valid Mongo stub so `npm run docker:config` passes during Phase 1-4. Phase 10 must replace it with full Caddy/API/web/Mongo production topology.
 - The real MobileNetV2 classifier path is a boundary placeholder; mock mode is the supported local/test default until a trained `.pt` artifact is promoted.
+- Google Places and Gemini provider calls are disabled by default in local/test env. Tests use mocked or deterministic provider behavior.
 - No real secrets should be added to `.env.local`, `.env.local.example`, or deployment env examples.
 - ADR `docs/adr/0002-runtime-foundation-and-storage-boundaries.md` captures the durable implementation caveats and follow-up hardening work without tying those decisions to roadmap phase labels.
 
 ## 5. Recommended Next Start
 
-Continue with Phase 5 from `.agents/implementationPhase.md`:
+Continue Phase 6 from `.agents/implementationPhase.md`:
 
-1. Implement Google Places provider with mocked tests and timeout/fallback behavior.
-2. Normalize and cache place enrichment.
-3. Generate destination candidates from confirmed categories and destination seeds.
-4. Implement Gemini recommendation adapter with structured JSON validation, retry once, and deterministic fallback.
-5. Persist `RecommendationRun` and `RecommendationItem` records.
-6. Add recommendation API tests while keeping provider keys backend-only and mocked by default.
+1. Run the MongoDB testcontainers test with Docker Desktop running and expand it for place cache expiry/index assertions if needed.
+2. Add provider transport-level tests for Google Places timeout/no-result/partial-result cases.
+3. Review and freeze pre-planner API response contracts before starting frontend foundation work.
+4. Keep provider keys backend-only and mocked or disabled by default in automated tests.
