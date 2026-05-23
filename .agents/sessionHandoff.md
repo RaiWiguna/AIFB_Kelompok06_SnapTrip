@@ -103,6 +103,8 @@
   - expanded Playwright helpers and specs for auth, Explore/filter/like/save/collections, image upload/classification/category confirmation, recommendation selection, planner preview, public Trip Plan detail reads, and no-key static map fallback,
   - configured Playwright E2E to run serially because the test-only reset endpoint mutates the shared memory-mode backend state,
   - kept Gemini, Google Places, and Google Maps keys disabled for CI/local E2E.
+- Added ADR coverage for the integrated journey validation boundary:
+  - `docs/adr/0008-integrated-product-journey-validation-boundary.md`.
 
 ## 2. Current Repo Facts
 
@@ -228,6 +230,7 @@ Verification after integrated product journey validation:
 - Planner acceptance, invites, participant writes, and persisted structured planner documents remain intentionally unavailable even though preview document shapes are now rendered.
 - No real secrets should be added to `.env.local`, `.env.local.example`, or deployment env examples.
 - ADRs under `docs/adr/` capture durable implementation caveats and follow-up hardening work without tying those decisions to roadmap phase labels.
+- `docs/adr/0008-integrated-product-journey-validation-boundary.md` freezes the test-only seed route and serial memory-mode E2E validation boundary.
 - Frontend npm audit is clean after the Next canary pin; revisit when a stable Next release includes the same fixes.
 - Integrated E2E uses the in-memory backend and a test-only reset/seed route; it validates frontend/backend contracts without exercising MongoDB persistence or real provider calls.
 
