@@ -11,8 +11,8 @@ ARG NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL} \
     NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY}
 
-COPY app/frontend/package.json app/frontend/package-lock.json ./
-RUN npm ci
+COPY app/frontend/package.json app/frontend/package-lock.json app/frontend/.npmrc ./
+RUN npm ci --legacy-peer-deps
 
 COPY app/frontend ./
 RUN npm run build

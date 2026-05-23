@@ -2,7 +2,7 @@
   "private": true,
   "scripts": {
     "postinstall": "npm run install:all",
-    "install:frontend": "npm install --prefix app/frontend",
+    "install:frontend": "npm ci --prefix app/frontend --legacy-peer-deps",
     "install:backend": "cd app/backend && uv sync",
     "install:all": "npm run install:frontend && npm run install:backend",
     "dev:frontend": "npm run dev --prefix app/frontend",
