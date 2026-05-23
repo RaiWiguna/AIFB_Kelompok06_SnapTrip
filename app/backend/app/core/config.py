@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     session_secret: str = "local-dev-session-secret-not-for-production"
     cookie_secure: bool = False
+    cookie_domain: str = ""
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database: str = "snaptrip"
     gridfs_bucket: str = "snaptrip_images"

@@ -10,6 +10,8 @@ import { TripCard } from "@/components/trip-card"
 import { CategoryIcon } from "@/components/category-icon"
 import { IMG } from "@/lib/data"
 import { CATEGORIES, CATEGORY_LABEL, type CategoryId } from "@/lib/categories"
+import { getCurrentUser } from "@/lib/api/auth"
+import { ApiError } from "@/lib/api/client"
 import { getExploreTrips } from "@/lib/api/explore"
 
 export default async function ExplorePage({
@@ -18,10 +20,19 @@ export default async function ExplorePage({
   searchParams: Promise<{ as?: string; category?: CategoryId }>
 }) {
   const { as, category } = await searchParams
-  const isAuthed = as === "user"
+  const requestedAuthed = as === "user"
   const selectedCategory = category && CATEGORIES.some((item) => item.id === category) ? category : "pantai"
-  const cookieHeader = isAuthed ? (await cookies()).toString() : undefined
-  const filtered = await getExploreTrips({ categories: [selectedCategory], cookieHeader })
+  const cookieHeader = requestedAuthed ? (await cookies()).toString() : undefined
+  let currentUser: Awaited<ReturnType<typeof getCurrentUser>> | undefined
+  if (cookieHeader) {
+    try {
+      currentUser = await getCurrentUser(cookieHeader)
+    } catch (error) {
+      if (!(error instanceof ApiError && error.status === 401)) throw error
+    }
+  }
+  const isAuthed = Boolean(currentUser)
+  const filtered = await getExploreTrips({ categories: [selectedCategory], cookieHeader: isAuthed ? cookieHeader : undefined })
   const selectedLabel = CATEGORY_LABEL[selectedCategory]
 
   return (
@@ -38,7 +49,14 @@ export default async function ExplorePage({
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background" />
       </div>
 
-      {isAuthed ? <AppHeader active="explore" /> : <SiteHeader active="explore" />}
+      {currentUser ? (
+        <AppHeader
+          active="explore"
+          user={{ name: currentUser.displayName, email: currentUser.email, initials: currentUser.initials }}
+        />
+      ) : (
+        <SiteHeader active="explore" />
+      )}
 
       <main className="mx-auto w-full max-w-[1480px] flex-1 px-6 pb-24 pt-4 md:px-10">
         <div className="grid grid-cols-1 gap-10 lg:grid-cols-[300px_1fr]">

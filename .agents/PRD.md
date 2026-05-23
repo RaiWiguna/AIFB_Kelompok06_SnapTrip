@@ -1952,6 +1952,7 @@ WEB_BASE_URL=https://snaptrip.site
 CORS_ORIGINS=https://snaptrip.site
 SESSION_SECRET=
 COOKIE_SECURE=true
+COOKIE_DOMAIN=snaptrip.site
 MONGODB_URI=
 MONGODB_DATABASE=snaptrip
 GRIDFS_BUCKET=snaptrip_images

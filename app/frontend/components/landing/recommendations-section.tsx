@@ -55,7 +55,7 @@ export function RecommendationsSection() {
                 Recommendations for your trip
               </div>
               <div className="text-[12.5px] text-sage">
-                Bali · 6 days · 2–8 Aug 2025
+                Bali · 6 days · 2–8 Aug 2026
               </div>
             </div>
           </div>
