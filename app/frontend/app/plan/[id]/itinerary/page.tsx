@@ -1,7 +1,7 @@
 import { cookies } from "next/headers"
 import { notFound, redirect } from "next/navigation"
 import { AppFooter } from "@/components/app-footer"
-import { AppHeader } from "@/components/app-header"
+import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { TripBackLink } from "@/components/trip-back-link"
 import { TripItineraryBody } from "@/components/trip-itinerary-body"
 import { ApiError } from "@/lib/api/client"
@@ -26,7 +26,7 @@ export default async function PlannerItineraryPage({ params }: { params: Promise
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <AppHeader active="plan" />
+      <AuthenticatedAppHeader active="plan" next={`/plan/${id}/itinerary`} action="trips" />
 
       <main className="mx-auto w-full max-w-[1180px] flex-1 px-6 pb-20 pt-8 md:px-10">
         <div className="flex items-center justify-between gap-4">

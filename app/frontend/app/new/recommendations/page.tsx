@@ -2,6 +2,7 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { ApiError } from "@/lib/api/client"
 import { getTripCreationSession } from "@/lib/api/trip-creation"
+import { requireAppHeaderUser } from "@/lib/server-auth"
 import { RecommendationsStepClient } from "./recommendations-step-client"
 
 export default async function RecommendationsStepPage({
@@ -11,10 +12,12 @@ export default async function RecommendationsStepPage({
 }) {
   const { session } = await searchParams
   if (!session) redirect("/new")
+  const cookieHeader = (await cookies()).toString()
+  const headerUser = await requireAppHeaderUser("/new/recommendations", "plan", cookieHeader)
 
   let tripSession
   try {
-    tripSession = await getTripCreationSession(session, (await cookies()).toString())
+    tripSession = await getTripCreationSession(session, cookieHeader)
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       redirect("/signin?next=%2Fnew%2Frecommendations&action=plan")
@@ -29,5 +32,5 @@ export default async function RecommendationsStepPage({
     redirect(`/new/categories?session=${tripSession.id}`)
   }
 
-  return <RecommendationsStepClient initialSession={tripSession} />
+  return <RecommendationsStepClient initialSession={tripSession} headerUser={headerUser} />
 }

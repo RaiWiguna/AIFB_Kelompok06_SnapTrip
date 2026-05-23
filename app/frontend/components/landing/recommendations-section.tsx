@@ -3,6 +3,13 @@ import { Bookmark, Clock, Compass, Leaf, Lightbulb, MapPin, ShieldCheck, Sparkle
 import { IMG, RECOMMENDATIONS } from "@/lib/data"
 import { LandingSection, Reveal, Stagger, StaggerItem } from "@/components/landing/landing-motion"
 
+const RECOMMENDATION_COVERS: Record<string, string> = {
+  "Raja Ampat": IMG.landingRecRajaAmpat,
+  "Bromo Tengger Semeru": IMG.landingRecBromoTenggerSemeru,
+  "Tumpak Sewu": IMG.landingRecTumpakSewu,
+  Yogyakarta: IMG.landingRecYogyakartaHeritage,
+}
+
 export function RecommendationsSection() {
   return (
     <LandingSection className="relative overflow-hidden bg-[#1a1f1d] py-16 text-mist md:flex md:min-h-[125svh] md:items-center md:py-10">
@@ -68,7 +75,7 @@ export function RecommendationsSection() {
               >
                 <div className="relative aspect-[5/4] lg:aspect-[4/3]">
                   <Image
-                    src={r.cover || "/placeholder.svg"}
+                    src={RECOMMENDATION_COVERS[r.name] || r.cover || "/placeholder.svg"}
                     alt={r.name}
                     fill
                     sizes="(max-width: 768px) 100vw, 25vw"

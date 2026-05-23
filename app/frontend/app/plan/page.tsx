@@ -16,7 +16,7 @@ import {
   Star,
   X,
 } from "lucide-react"
-import { AppHeader } from "@/components/app-header"
+import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { AppFooter } from "@/components/app-footer"
 
 const PREVIEW_DRAFT = {
@@ -49,7 +49,7 @@ export default function PlanPage() {
         <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/85 to-background" />
       </div>
 
-      <AppHeader active="plan" />
+      <AuthenticatedAppHeader active="plan" next="/plan" action="plan" />
 
       <main className="mx-auto w-full max-w-[1480px] flex-1 px-6 pb-24 pt-4 md:px-10">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">

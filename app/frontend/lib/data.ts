@@ -31,6 +31,24 @@ export const IMG = {
   baliWomanTemple: "/landing/bali-woman-temple.png",
   baliCoastalPano: "/landing/bali-coastal-pano.png",
   indonesiaMap: "/landing/indonesia-map.png",
+  // Landing section card images
+  heroMemoNusaPenida: "/landing/hero-memo-nusa-penida.png",
+  heroMemoAmedSidemen: "/landing/hero-memo-amed-sidemen.png",
+  heroMemoBromo: "/landing/hero-memo-bromo.png",
+  heroMemoUbudTemple: "/landing/hero-memo-ubud-temple.png",
+  heroItineraryUbud: "/landing/hero-itinerary-ubud.png",
+  heroItineraryWaterfallsTemples: "/landing/hero-itinerary-waterfalls-temples.png",
+  heroItineraryNusaPenida: "/landing/hero-itinerary-nusa-penida.png",
+  landingCardBaliVolcanicCoast: "/landing/landing-card-bali-volcanic-coast.png",
+  landingCardMountBaturSunrise: "/landing/landing-card-mount-batur-sunrise.png",
+  landingCardNorthBaliWaterfalls: "/landing/landing-card-north-bali-waterfalls.png",
+  landingCardPinkBeachLabuanBajo: "/landing/landing-card-pink-beach-labuan-bajo.png",
+  landingCardUbudCulture: "/landing/landing-card-ubud-culture.png",
+  landingCardIjenBlueFire: "/landing/landing-card-ijen-blue-fire.png",
+  landingRecRajaAmpat: "/landing/landing-rec-raja-ampat.png",
+  landingRecBromoTenggerSemeru: "/landing/landing-rec-bromo-tengger-semeru.png",
+  landingRecTumpakSewu: "/landing/landing-rec-tumpak-sewu.png",
+  landingRecYogyakartaHeritage: "/landing/landing-rec-yogyakarta-heritage.png",
 }
 
 /* -------- Trips -------- */
@@ -370,8 +388,8 @@ export const PLAN_DRAFT = {
 
 export const CURRENT_USER = {
   id: "u_self",
-  displayName: "Lintang Pertiwi",
-  email: "lintang@snaptrip.site",
+  displayName: "Demo Traveler",
+  email: "demo@snaptrip.site",
   avatar: AVATARS.you,
   joinedAt: "Joined Apr 2026",
   bio: "Planning quiet weeks across Java, Bali, and Flores.",
@@ -693,12 +711,12 @@ export const PLAN_SESSION = {
 export type InviteState = "valid" | "invalid" | "expired" | "revoked" | "joined" | "auth_required"
 
 export const INVITES: Record<string, { tripId: string; state: InviteState; ownerName: string }> = {
-  "bali-aug-2026": { tripId: "bali-nusa-penida-aug", state: "valid", ownerName: "Lintang Pertiwi" },
-  expired: { tripId: "bali-nusa-penida-aug", state: "expired", ownerName: "Lintang Pertiwi" },
-  revoked: { tripId: "bali-nusa-penida-aug", state: "revoked", ownerName: "Lintang Pertiwi" },
-  joined: { tripId: "bali-nusa-penida-aug", state: "joined", ownerName: "Lintang Pertiwi" },
+  "bali-aug-2026": { tripId: "bali-nusa-penida-aug", state: "valid", ownerName: "Demo Traveler" },
+  expired: { tripId: "bali-nusa-penida-aug", state: "expired", ownerName: "Demo Traveler" },
+  revoked: { tripId: "bali-nusa-penida-aug", state: "revoked", ownerName: "Demo Traveler" },
+  joined: { tripId: "bali-nusa-penida-aug", state: "joined", ownerName: "Demo Traveler" },
   invalid: { tripId: "", state: "invalid", ownerName: "" },
-  auth: { tripId: "bali-nusa-penida-aug", state: "auth_required", ownerName: "Lintang Pertiwi" },
+  auth: { tripId: "bali-nusa-penida-aug", state: "auth_required", ownerName: "Demo Traveler" },
 }
 
 /* -------- Helpers used by the new pages -------- */
@@ -794,7 +812,7 @@ export function getInvite(token: string): InvitePreview | null {
     tripId: raw.tripId || "bali-nusa-penida-aug",
     tripTitle: trip?.title ?? "Bali & Nusa Penida",
     cover: trip?.cover ?? IMG.diamondBeach,
-    inviterName: raw.ownerName || "Lintang Pertiwi",
+    inviterName: raw.ownerName || "Demo Traveler",
     role: token === "expired" || token === "revoked" ? "viewer" : "editor",
     participants: trip?.participants ?? 2,
     days: trip?.days ?? 6,

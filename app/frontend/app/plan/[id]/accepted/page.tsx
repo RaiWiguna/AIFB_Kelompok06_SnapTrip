@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation"
 import { ArrowRight, Bookmark, Calendar, CheckCircle2, MapPin, Share2, Wallet } from "lucide-react"
 
 import { AppFooter } from "@/components/app-footer"
-import { AppHeader } from "@/components/app-header"
+import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { AcceptedHeroBadge } from "@/components/planner/accepted-hero-badge"
 import { ApiError } from "@/lib/api/client"
 import { getPlannerPreview } from "@/lib/api/planner-preview"
@@ -51,7 +51,7 @@ export default async function PlanAcceptedPage({ params }: { params: Promise<{ i
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <AppHeader active="plan" />
+      <AuthenticatedAppHeader active="plan" next={`/plan/${id}/accepted`} action="trips" />
 
       <main className="mx-auto w-full max-w-[1180px] flex-1 px-6 pb-20 pt-8 md:px-10">
         <section className="relative overflow-hidden rounded-3xl bg-secondary/60 px-6 py-10 ring-1 ring-border/70 md:px-10 md:py-14">

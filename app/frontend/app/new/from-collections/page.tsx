@@ -3,7 +3,7 @@ import Link from "next/link"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { ArrowLeft, ArrowRight, Bookmark } from "lucide-react"
-import { AppHeader } from "@/components/app-header"
+import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { AppFooter } from "@/components/app-footer"
 import { StepIndicator, NEW_TRIP_STEPS } from "@/components/step-indicator"
 import { ApiError } from "@/lib/api/client"
@@ -22,7 +22,7 @@ export default async function NewFromCollectionsPage() {
   }
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <AppHeader active="new" />
+      <AuthenticatedAppHeader active="new" next="/new/from-collections" action="plan" />
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 pb-20 pt-6 md:px-10">
         <div className="mb-2 flex items-center gap-2 text-[12px] text-muted-foreground">
           <Link href="/" className="hover:text-primary">

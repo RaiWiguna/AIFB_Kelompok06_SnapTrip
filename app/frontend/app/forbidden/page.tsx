@@ -1,7 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { ArrowRight, ShieldOff } from "lucide-react"
-import { AppHeader } from "@/components/app-header"
+import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { AppFooter } from "@/components/app-footer"
 import { IMG_ALIAS } from "@/lib/data"
 
@@ -20,7 +20,7 @@ export default function ForbiddenPage() {
         <div className="absolute inset-0 bg-gradient-to-b from-primary/55 via-primary/35 to-background" />
       </div>
 
-      <AppHeader />
+      <AuthenticatedAppHeader />
 
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center px-6 pb-24 pt-16 text-center md:pt-24">
         <span className="grid size-14 place-items-center rounded-full bg-card text-primary ring-1 ring-border/70">
@@ -39,7 +39,7 @@ export default function ForbiddenPage() {
 
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
           <Link
-            href="/explore"
+            href="/explore?as=user"
             className="inline-flex items-center gap-2 rounded-full bg-card px-6 py-3 text-[13.5px] font-medium text-primary ring-1 ring-border hover:bg-secondary"
           >
             Browse public trips

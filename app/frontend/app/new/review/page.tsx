@@ -1,7 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { ArrowLeft, Calendar, CheckCircle2, Globe2, Lock, ShieldCheck, Users } from "lucide-react"
-import { AppHeader } from "@/components/app-header"
+import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { AppFooter } from "@/components/app-footer"
 import { StepIndicator, NEW_TRIP_STEPS } from "@/components/step-indicator"
 
@@ -28,7 +28,7 @@ export default function ReviewStepPage() {
   const s = REVIEW_PREVIEW
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <AppHeader active="new" />
+      <AuthenticatedAppHeader active="new" next="/new/review" action="plan" />
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 pb-24 pt-6 md:px-10">
         <div className="mb-2 flex items-center gap-2 text-[12px] text-muted-foreground">
           <Link href="/" className="hover:text-primary">

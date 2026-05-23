@@ -3,7 +3,7 @@ import Link from "next/link"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { ArrowUpRight, Calendar, Plus, Users } from "lucide-react"
-import { AppHeader } from "@/components/app-header"
+import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { AppFooter } from "@/components/app-footer"
 import { ApiError } from "@/lib/api/client"
 import { getAccountSummary } from "@/lib/api/account"
@@ -26,7 +26,7 @@ export default async function MyTripsPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <AppHeader active="trips" />
+      <AuthenticatedAppHeader active="trips" next="/trips" action="trips" />
       <main className="mx-auto w-full max-w-[1480px] flex-1 px-6 py-10 md:px-10">
         <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div>

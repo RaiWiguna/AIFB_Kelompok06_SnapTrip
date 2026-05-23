@@ -45,7 +45,7 @@ export function SignUpForm({
           <input
             name="display_name"
             type="text"
-            placeholder="Lintang Pertiwi"
+            placeholder="Your full name"
             required
             className="min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-muted-foreground"
           />
