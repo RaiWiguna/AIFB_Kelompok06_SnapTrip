@@ -86,6 +86,11 @@
   - disabled fake planner acceptance and replaced `/new/review` plus `/plan/[id]/accepted` with explicit deferred-boundary pages,
   - integrated `/trips` with backend account summary data instead of runtime `MY_TRIPS`/`JOINED_TRIPS` fixtures,
   - added frontend planner preview adapter tests, integrated-page fixture import audit coverage, and a Playwright planner preview smoke test.
+- Added ADR coverage for the completed integration decisions:
+  - `docs/adr/0004-frontend-display-integration-and-api-adapter-boundary.md`,
+  - `docs/adr/0005-trip-creation-media-and-recommendation-handoff-boundary.md`,
+  - `docs/adr/0006-trip-plan-detail-read-model-and-map-rendering-boundary.md`,
+  - `docs/adr/0007-planner-preview-and-deferred-acceptance-boundary.md`.
 
 ## 2. Current Repo Facts
 
@@ -187,7 +192,7 @@ Visual verification after preserving planner page shells:
 - The planner preview endpoint requires selected recommendations and intentionally returns `422` before destination selection.
 - Planner acceptance, invites, participant writes, and persisted structured planner documents remain intentionally unavailable even though preview document shapes are now rendered.
 - No real secrets should be added to `.env.local`, `.env.local.example`, or deployment env examples.
-- ADR `docs/adr/0002-runtime-foundation-and-storage-boundaries.md` captures the durable implementation caveats and follow-up hardening work without tying those decisions to roadmap phase labels.
+- ADRs under `docs/adr/` capture durable implementation caveats and follow-up hardening work without tying those decisions to roadmap phase labels.
 - Frontend npm audit is clean after the Next canary pin; revisit when a stable Next release includes the same fixes.
 
 ## 5. Recommended Next Start
