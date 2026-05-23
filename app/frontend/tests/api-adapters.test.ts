@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { apiAssetUrl, ApiError } from "../lib/api/client"
@@ -6,8 +6,15 @@ import { adaptTripCard, formatIdr } from "../lib/api/adapters/trips"
 import { adaptTripDetail } from "../lib/api/adapters/trip-detail"
 import { adaptRecommendationItem, adaptTripCreationSession } from "../lib/api/adapters/trip-creation"
 import { TripRouteMap } from "../components/trip-route-map"
+import { env } from "../lib/env"
 
 describe("frontend API adapters", () => {
+  const originalGoogleMapsKey = env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY
+
+  afterEach(() => {
+    env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY = originalGoogleMapsKey
+  })
+
   it("formats IDR display values for trip cards", () => {
     expect(formatIdr(2_800_000)).toBe("Rp 2,8 jt")
     expect(formatIdr(950_000)).toBe("Rp 950 rb")
@@ -232,6 +239,7 @@ describe("frontend API adapters", () => {
   })
 
   it("renders the static route map fallback without a Google Maps key", () => {
+    env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY = ""
     const html = renderToStaticMarkup(
       createElement(TripRouteMap, {
         stops: [
@@ -245,12 +253,49 @@ describe("frontend API adapters", () => {
             pin: { x: 40, y: 50 },
             days: [1],
           },
+          {
+            order: 2,
+            name: "Ubud",
+            region: "Bali",
+            cover: "/landing/diamond-beach.png",
+            blurb: "Village stop",
+            highlights: ["Sawah"],
+            pin: { x: 60, y: 70 },
+            days: [2],
+          },
         ],
       }),
     )
 
-    expect(html).toContain("Trip route: Pantai Kuta")
+    expect(html).toContain("Trip route: Pantai Kuta, Ubud")
     expect(html).toContain("Indonesia")
+    expect(html).toContain('role="img"')
+    expect(html).toContain('points="40,28 60,39.2"')
+  })
+
+  it("uses interactive map semantics when Google Maps can render", () => {
+    env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY = "test-key"
+    const html = renderToStaticMarkup(
+      createElement(TripRouteMap, {
+        stops: [
+          {
+            order: 1,
+            name: "Pantai Kuta",
+            region: "Bali",
+            cover: "/landing/diamond-beach.png",
+            blurb: "Beach stop",
+            highlights: ["Pantai"],
+            pin: { x: 40, y: 50 },
+            days: [1],
+            lat: -8.7185,
+            lng: 115.1686,
+          },
+        ],
+      }),
+    )
+
+    expect(html).toContain('role="region"')
+    expect(html).not.toContain('role="img"')
   })
 
   it("keeps frontend public placeholder assets relative", () => {

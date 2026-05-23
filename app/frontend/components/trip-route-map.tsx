@@ -5,6 +5,9 @@ import { importLibrary, setOptions } from "@googlemaps/js-api-loader"
 import type { DestinationStop } from "@/lib/trip-detail"
 import { env } from "@/lib/env"
 
+const STATIC_MAP_VIEWBOX_HEIGHT = 56
+const PIN_PERCENT_SPACE = 100
+
 export function TripRouteMap({
   stops,
   variant = "compact",
@@ -122,7 +125,7 @@ function GoogleRouteMap({
   return (
     <div
       className={`relative w-full overflow-hidden rounded-2xl ring-1 ring-border/60 ${heightClass} ${className ?? ""}`}
-      role="img"
+      role="region"
       aria-label={mapLabel(stops)}
     >
       <div ref={mapRef} className="absolute inset-0" />
@@ -172,7 +175,7 @@ function StaticRouteMap({
         />
         <ellipse cx="58" cy="50" rx="6" ry="2.6" fill="#cdbb98" stroke="#9a8866" strokeWidth="0.4" opacity="0.85" />
         <polyline
-          points={stops.map((stop) => `${stop.pin.x},${stop.pin.y}`).join(" ")}
+          points={stops.map((stop) => staticMapPoint(stop)).join(" ")}
           fill="none"
           stroke="#1d3a32"
           strokeWidth="0.6"
@@ -198,6 +201,16 @@ function StaticRouteMap({
       </span>
     </div>
   )
+}
+
+function staticMapPoint(stop: DestinationStop) {
+  return `${formatStaticCoordinate(stop.pin.x)},${formatStaticCoordinate(
+    (stop.pin.y / PIN_PERCENT_SPACE) * STATIC_MAP_VIEWBOX_HEIGHT,
+  )}`
+}
+
+function formatStaticCoordinate(value: number) {
+  return Number(value.toFixed(2)).toString()
 }
 
 function mapLabel(stops: DestinationStop[]) {
