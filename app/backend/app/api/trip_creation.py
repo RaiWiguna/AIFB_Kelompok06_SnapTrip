@@ -110,7 +110,7 @@ async def create_trip_session(
             "selected_recommendation_ids": [],
         },
     )
-    return {"session": session}
+    return {"session": await session_display(store, session)}
 
 
 @router.get("/{session_id}")
@@ -182,7 +182,7 @@ async def add_source_images(
         session_id,
         {"source_image_refs": refs, "status": "images_selected"},
     )
-    return {"session": updated}
+    return {"session": await session_display(store, updated)}
 
 
 @router.post("/{session_id}/classify")
@@ -247,7 +247,7 @@ async def confirm_categories(
         session_id,
         {"confirmed_categories": categories, "status": "categories_confirmed"},
     )
-    return {"session": session}
+    return {"session": await session_display(store, session)}
 
 
 @router.post("/{session_id}/recommendations")

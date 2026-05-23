@@ -43,6 +43,20 @@ export async function getCollections(cookieHeader?: string): Promise<CollectionC
   return body.collections.map(adaptCollectionCard)
 }
 
+export async function createCollection(name: string): Promise<CollectionCardDisplay> {
+  const body = await apiFetch<{ collection: BackendCollectionCard }>("/api/collections", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  })
+  return adaptCollectionCard(body.collection)
+}
+
+export async function saveTripToCollection(collectionId: string, tripPlanId: string) {
+  return apiFetch<{ saved: true }>(`/api/collections/${collectionId}/items/${tripPlanId}`, {
+    method: "POST",
+  })
+}
+
 export async function getCollectionDetail(
   slugOrId: string,
   cookieHeader?: string,

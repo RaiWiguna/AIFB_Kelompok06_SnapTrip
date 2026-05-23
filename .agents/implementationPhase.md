@@ -317,7 +317,7 @@ Exit criteria:
 
 ## 13. Phase 9 - Integrated Product E2E
 
-Status: Pending.
+Status: Complete in integrated product journey validation.
 
 Execution list:
 
@@ -334,6 +334,14 @@ Execution list:
 Exit criteria:
 
 - Integrated frontend/backend user journeys pass E2E without real Gemini, Google Places, or Google Maps keys in CI.
+
+Current implementation notes:
+
+- Playwright now runs integrated product journeys serially against memory-mode FastAPI and the local Next.js dev server.
+- Test-only `POST /api/testing/reset-product-journeys` seeds deterministic public accepted Trip Plans across all four canonical categories and a private control Trip Plan; it is registered only when `APP_ENV=test`.
+- Trip card display DTOs now expose viewer saved state, and the frontend card includes a compact save-to-collection control with inline collection creation.
+- E2E coverage includes signup/login/logout, Explore category filters, like/save/create collection, image upload/classification/category confirmation, deterministic recommendations, destination selection, planner preview, public Trip Plan detail reads, and the no-key Google Maps static fallback path.
+- CI/local E2E continues to require no real Gemini, Google Places, or Google Maps keys.
 
 ## 14. Phase 10 - Docker, Deployment, GitHub Actions, and Rollback
 

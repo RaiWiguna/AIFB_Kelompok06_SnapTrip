@@ -2,6 +2,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { Bookmark, Calendar, Heart, ShieldCheck, Star, Wallet } from "lucide-react"
 import { TripCardLikeButton } from "@/components/trip-card-like-button"
+import { TripCardSaveButton } from "@/components/trip-card-save-button"
 import type { TripCardDisplay } from "@/lib/api/types"
 import { cn } from "@/lib/utils"
 
@@ -66,7 +67,10 @@ export function TripCard({
           ) : (
             <span />
           )}
-          <TripCardLikeButton tripId={trip.id} liked={trip.liked} authHref={authHref} />
+          <span className="flex items-center gap-2">
+            <TripCardLikeButton tripId={trip.id} liked={trip.liked} authHref={authHref} />
+            <TripCardSaveButton tripId={trip.id} saved={trip.saved} authHref={authHref} />
+          </span>
         </div>
 
         {/* Bottom: owner + title */}

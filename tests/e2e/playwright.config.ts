@@ -14,6 +14,7 @@ const windowsShellEnv = {
 export default defineConfig({
   testDir: ".",
   timeout: 30_000,
+  workers: 1,
   webServer: [
     {
       command: "uv run uvicorn app.main:app --host 127.0.0.1 --port 8000",
@@ -27,6 +28,7 @@ export default defineConfig({
         SNAPTRIP_STORAGE: "memory",
         MONGODB_URI: "memory://snaptrip",
         APP_ENV: "test",
+        CORS_ORIGINS: "http://127.0.0.1:3000,http://localhost:3000",
         CLASSIFIER_MODE: "mock",
         SESSION_SECRET: "test-session-secret",
         USE_GEMINI: "false",
