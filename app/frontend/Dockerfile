@@ -2,8 +2,7 @@ FROM node:22-alpine AS runtime
 
 WORKDIR /app
 
-ENV NODE_ENV=production \
-    NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_TELEMETRY_DISABLED=1
 
 ARG NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY
@@ -17,6 +16,8 @@ RUN npm ci --legacy-peer-deps
 COPY app/frontend ./
 RUN npm run build
 RUN npm prune --omit=dev
+
+ENV NODE_ENV=production
 
 EXPOSE 3000
 
