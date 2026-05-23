@@ -4,7 +4,7 @@
 | --- | --- |
 | Document status | Canonical implementation roadmap |
 | Created | 2026-05-08 |
-| Last updated | 2026-05-08 |
+| Last updated | 2026-05-23 |
 | Source of truth | `.agents/PRD.md` |
 | Purpose | Execution plan for implementing SnapTrip across scaffold, MongoDB/GridFS backend, PyTorch classifier, frontend, recommendation AI, deployment, post-deployment agentic planner, and final acceptance |
 
@@ -19,12 +19,11 @@ Implementation order:
 5. Image upload, classifier, categories, and destination seed backend.
 6. Google Places and Gemini recommendation backend.
 7. Backend tests and API contract hardening for the pre-planner product.
-8. Frontend foundation and design system.
-9. Frontend product surfaces through Explore, classification, and recommendations.
-10. Frontend/backend integration and E2E tests for the pre-planner product.
-11. Docker, deployment, GitHub Actions, and remote rollback.
-12. Agentic planner, structured documents, acceptance, invites, participants, and planner UI.
-13. Final hardening, acceptance pass, and handoff.
+8. Frontend/backend integration against the current frontend experience.
+9. Integrated product E2E validation.
+10. Docker, deployment, GitHub Actions, and remote rollback.
+11. Agentic planner, structured documents, acceptance, invites, participants, and planner UI.
+12. Final hardening, acceptance pass, and handoff.
 
 Current workspace baseline:
 
@@ -52,6 +51,7 @@ Current workspace baseline:
 .agents/
   PRD.md
   implementationPhase.md
+  integrationPhases.md
   rules.md
   sessionHandoff.md
 app/
@@ -256,63 +256,58 @@ Exit criteria:
 
 - Backend pre-planner behavior is tested and stable.
 
-## 11. Phase 7 - Frontend Foundation and Design System
+## 11. Phase 7 - Frontend/Backend Integration
 
 Status: Pending.
 
 Execution list:
 
-- Keep Next.js App Router.
-- Add API client layer.
-- Add env validation.
-- Add auth state handling.
-- Add app shell navigation.
-- Add components for buttons, dialogs, filters, cards, uploaders, collection picker, destination cards, and pre-planner placeholders.
-- Add frontend schemas and Vitest tests.
+- Treat the current `app/frontend/` experience as the visual and interaction target.
+- Create and follow `.agents/integrationPhases.md`.
+- Add frontend API client, env validation, runtime state, and typed display adapters.
+- Prefer backend/API improvements over UI redesign when current frontend mock shapes and backend responses differ.
+- Integrate auth/account, Explore, likes, collections, trip creation, image classification, recommendations, destination selection, Trip Plan detail reads, and Google Maps rendering.
+- Keep Google Places API backend-only; use Google Maps JavaScript API in the frontend only for map rendering with a browser-restricted public key.
+- Keep agentic planner, persisted structured planner documents, acceptance, invites, and participants owned by Phase 11.
 
 Exit criteria:
 
-- Frontend can authenticate and consume stable pre-planner contracts.
+- Integrated frontend product surfaces use backend API/adapters instead of runtime mock data, except explicit Phase 11 planner/demo boundaries.
+- Current frontend visual behavior is preserved with only minor adapter/state changes.
+- `.agents/integrationPhases.md` remains the detailed execution source for Phase 7.
 
-## 12. Phase 8 - Frontend Product Surfaces Through Recommendations
+## 12. Phase 8 - Merged into Phase 7
 
-Status: Pending.
+Status: Retired as standalone phase.
 
 Execution list:
 
-- Implement signup/login/logout UI.
-- Implement Explore UI.
-- Implement category filters.
-- Implement like/save/collection create flow.
-- Implement Trip Plan detail preview.
-- Implement trip creation image flow.
-- Implement classification UI.
-- Implement category correction UI.
-- Implement recommendation card UI.
-- Add disabled or "coming next" planner entry point after destination selection.
+- Former frontend foundation and frontend product surface work now belongs to Phase 7.
+- Use `.agents/integrationPhases.md` instead of this retired phase for frontend/backend integration details.
 
 Exit criteria:
 
-- Pre-planner product works through real backend contracts.
-- Planner session creation and document panels are not implemented yet.
+- Not applicable; Phase 7 owns the integrated frontend/backend exit criteria.
 
-## 13. Phase 9 - Pre-planner Integration and E2E
+## 13. Phase 9 - Integrated Product E2E
 
 Status: Pending.
 
 Execution list:
 
-- Replace frontend mock data with real API calls.
 - Add Playwright harness.
 - Seed test users, destination seeds, and public Trip Plans.
-- Cover Explore/filter/like/save.
+- Cover signup/login/logout.
+- Cover Explore/filter/like/save/collection flows.
 - Cover image upload/classification/category correction.
 - Cover recommendation generation and destination selection.
-- Confirm deferred planner entry point does not start Flow 3.
+- Cover public Trip Plan detail read.
+- Cover Google Maps fallback path in CI and configurable Maps smoke path locally.
+- Confirm planner routes load preview/demo state without asserting Phase 11 agent behavior.
 
 Exit criteria:
 
-- Pre-planner user journeys pass E2E.
+- Integrated frontend/backend user journeys pass E2E without real Gemini, Google Places, or Google Maps keys in CI.
 
 ## 14. Phase 10 - Docker, Deployment, GitHub Actions, and Rollback
 
@@ -339,7 +334,7 @@ Execution list:
 
 Exit criteria:
 
-- Pre-planner product deploys to VM.
+- Integrated frontend/backend product deploys to VM.
 - Smoke checks and `/ready` pass.
 - Rollback preserves MongoDB/GridFS data.
 
@@ -362,6 +357,7 @@ Execution list:
 - Replace deferred planner UI with real planner UI.
 - Implement invite frontend.
 - Add planner E2E tests.
+- Promote or replace Phase 7 planner preview adapters with real planner session/document contracts.
 
 Exit criteria:
 
@@ -403,11 +399,11 @@ Exit criteria:
 | Phase 4 | Phase 2 | Upload, classifier, category confirmation |
 | Phase 5 | Phase 4 | Structured recommendations |
 | Phase 6 | Phase 2-5 | Pre-planner contract freeze |
-| Phase 7 | Phase 1, Phase 6 | Frontend foundation |
-| Phase 8 | Phase 7 | Pre-planner product flows |
-| Phase 9 | Phase 8 | Pre-planner E2E validation |
+| Phase 7 | Phase 1, Phase 6 | Frontend/backend integration |
+| Phase 8 | Phase 7 | Retired; merged into Phase 7 |
+| Phase 9 | Phase 7 | Integrated product E2E validation |
 | Phase 10 | Phase 1, Phase 2, Phase 9 | Hosted deployment |
-| Phase 11 | Phase 10, Phase 5, Phase 8 | Agentic planner, documents, acceptance, invites |
+| Phase 11 | Phase 10, Phase 5, Phase 7 | Agentic planner, documents, acceptance, invites |
 | Phase 12 | Phase 10, Phase 11 | MVP acceptance and handoff |
 
 ## 18. Recommended First Execution Batch
@@ -433,7 +429,7 @@ Exit criteria:
 8. User confirms categories.
 9. System returns structured recommendations.
 10. User selects destinations.
-11. Pre-planner product deploys through Docker Compose, Caddy, and GitHub Actions.
+11. Integrated frontend/backend product deploys through Docker Compose, Caddy, and GitHub Actions.
 12. Deployed smoke checks and `/ready` pass.
 13. User chats with AI Trip Planner after deployment milestone.
 14. Planner produces Trip Memo, Full Itinerary, and Budget Plan.
@@ -699,88 +695,43 @@ Contract freeze:
 
 ### 21.7 Phase 7 detailed execution
 
-Frontend foundation:
+Detailed source:
 
-- Scaffold Next.js App Router.
-- Add global styles.
-- Add API client.
-- Add schema validation.
-- Add auth state.
-- Add app shell.
-- Add route groups for Explore, auth, trip creation, recommendations, planner placeholder, and Trip Plan detail.
+- Follow `.agents/integrationPhases.md` as the decision-complete execution plan for Phase 7.
 
-Components:
+Integration scope:
 
-- Button.
-- IconButton.
-- Input.
-- Dialog.
-- Tabs.
-- CategoryFilter.
-- TripPlanCard.
-- CollectionPicker.
-- ImageUploader.
-- DestinationCard.
-- DocumentPreviewPlaceholder.
-- LoadingState.
-- EmptyState.
-- ErrorState.
+- Keep the current frontend visual experience as the target.
+- Add frontend API client, env validation, typed adapters, and runtime state.
+- Wire auth/account, Explore, likes, collections, trip creation, classification, recommendations, destination selection, Trip Plan detail reads, and Google Maps rendering.
+- Improve backend response shapes to match current frontend mock functionality where needed.
+- Keep Google Places API backend-only.
+- Use Google Maps JavaScript API in the frontend only for rendering maps with `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`.
+
+Phase 11 boundaries:
+
+- Do not implement real Gemini planner chat in Phase 7.
+- Do not persist `trip_memo.v1`, `full_itinerary.v1`, or `budget_plan.v1` in Phase 7.
+- Do not implement Trip Plan acceptance, share invites, or participants in Phase 7.
+- Preserve planner preview/demo display shapes so Phase 11 can promote them later.
 
 ### 21.8 Phase 8 detailed execution
 
-Auth UI:
-
-- Signup.
-- Login.
-- Logout.
-- Current user display.
-- Protected action login prompt.
-
-Explore UI:
-
-- Feed/grid.
-- Filters.
-- TripPlan cards.
-- Like.
-- Save.
-- Create collection inline.
-
-Trip creation UI:
-
-- Image source choice.
-- Upload.
-- Select saved/liked inspiration.
-- Thumbnail preview.
-- Classify action.
-- Prediction display.
-- Manual correction.
-
-Recommendation UI:
-
-- Trigger generation.
-- Render cards.
-- Display description, opening hours, estimated cost, rating, address, image snaps, warnings, and match reason.
-- Select destinations.
-- Show disabled planner CTA until Phase 11.
+Phase 8 is intentionally retired as a standalone phase. Its former frontend foundation and frontend product-surface work is now part of Phase 7 and is detailed in `.agents/integrationPhases.md`.
 
 ### 21.9 Phase 9 detailed execution
 
-Integration:
-
-- Replace mock frontend data.
-- Validate cookies locally.
-- Validate CORS locally.
-- Validate image rendering.
-- Validate error states.
-
-E2E:
+Integrated E2E:
 
 - Start MongoDB, API, and web.
 - Seed users and data.
-- Test Explore/filter/like/save.
-- Test image/classification flow.
-- Test recommendations.
-- Test deferred planner state.
+- Test signup/login/logout.
+- Test Explore/filter/like/save/collection flow.
+- Test image upload/classification/category confirmation flow.
+- Test recommendation generation and destination selection.
+- Test public Trip Plan detail read.
+- Test Google Maps fallback path in CI.
+- Test planner preview/demo route without asserting Phase 11 agent behavior.
 
 ### 21.10 Phase 10 detailed execution
 
@@ -839,6 +790,7 @@ Planner frontend:
 - Accept flow.
 - Invite flow.
 - Participant display.
+- Replace Phase 7 planner preview/demo adapters with real planner session and document data.
 
 Planner tests:
 
@@ -882,6 +834,7 @@ Likely future ADR candidates:
 - MongoDB index and lifecycle strategy after repositories are implemented.
 - Deployment rollback and backup procedure after scripts are implemented.
 - Agentic planner tool boundary after planner implementation begins.
+- Google Maps frontend rendering boundary if implementation expands beyond display-only maps.
 
 ## 23. CI/CD Path Filter Contract
 
