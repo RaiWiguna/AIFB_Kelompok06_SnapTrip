@@ -43,6 +43,7 @@ test("opens planner preview from selected recommendations", async ({ page }) => 
   await expect(page.getByText("Budget Plan")).toBeVisible();
 
   await page.getByRole("button", { name: /continue to review/i }).click();
-  await expect(page.getByRole("button", { name: /preview only/i })).toBeDisabled();
-  await expect(page.getByText(/Trip acceptance, invites, and participants/i)).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/plan/${session.id}$`));
+  await expect(page.getByRole("heading", { name: /review and accept your plan/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /accept plan/i })).toBeDisabled();
 });

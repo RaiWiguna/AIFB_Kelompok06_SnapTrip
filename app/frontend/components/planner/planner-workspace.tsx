@@ -192,7 +192,7 @@ export function PlannerWorkspace({ tripId, title, initialState, acceptanceReason
               </>
             ) : (
               <>
-                Review the preview
+                Review and accept
                 <br /> the plan you
                 <br /> built together.
               </>
@@ -206,7 +206,7 @@ export function PlannerWorkspace({ tripId, title, initialState, acceptanceReason
           >
             {phase === "plan"
               ? "Revise the plan through conversation while the memo, itinerary, and budget stay organized."
-              : "Check the deterministic memo, itinerary, and budget preview. Saving and sharing stay deferred to the full planner flow."}
+              : "When everything checks out, accept the plan to lock it as your trip. You can adjust visibility and invite people any time afterward."}
           </motion.p>
 
           <ol className="mt-12 flex items-center gap-2 text-[12px] text-muted-foreground">
@@ -234,7 +234,7 @@ export function PlannerWorkspace({ tripId, title, initialState, acceptanceReason
             <p className="text-[13px] font-medium">
               {phase === "plan"
                 ? "Your plan is private until you share."
-                : "This preview is not persisted as an accepted trip."}
+                : "Acceptance promotes this draft to a saved trip."}
             </p>
           </div>
 
@@ -293,9 +293,9 @@ export function PlannerWorkspace({ tripId, title, initialState, acceptanceReason
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                disabled
+                aria-disabled="true"
                 title="Sharing is implemented in the later planner flow."
-                className="inline-flex cursor-not-allowed items-center gap-2 rounded-full bg-secondary px-3.5 py-1.5 text-[12.5px] font-medium text-muted-foreground ring-1 ring-border"
+                className="inline-flex cursor-not-allowed items-center gap-2 rounded-full bg-secondary px-3.5 py-1.5 text-[12.5px] font-medium text-foreground ring-1 ring-border"
               >
                 <Share2 className="size-3.5" aria-hidden />
                 Share

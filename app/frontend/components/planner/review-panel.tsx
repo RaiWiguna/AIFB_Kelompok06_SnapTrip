@@ -34,10 +34,10 @@ export function ReviewPanel({
       <header>
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-accent">Step 5 · Final review</div>
         <h2 className="mt-2 font-display text-[22px] tracking-tight text-primary">
-          Review your preview
+          Review and accept your plan
         </h2>
         <p className="mt-1 text-[13px] leading-relaxed text-foreground/75">
-          Skim the summary below. This preview stays draft-only until the planner acceptance flow is implemented.
+          Skim the summary below, choose how you want to share it, then accept to save it as a real trip.
         </p>
       </header>
 
@@ -106,16 +106,13 @@ export function ReviewPanel({
           type="button"
           disabled
           title={acceptanceReason || "Acceptance is implemented in the later planner flow."}
-          className="inline-flex flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-full bg-secondary px-4 py-2.5 text-[13.5px] font-medium text-muted-foreground ring-1 ring-border"
+          className="inline-flex flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-full bg-primary px-4 py-2.5 text-[13.5px] font-medium text-primary-foreground ring-1 ring-primary/20 disabled:opacity-100"
         >
           <CheckCircle2 className="size-4" aria-hidden />
-          Preview only
+          Accept Plan
           <ArrowRight className="size-4" aria-hidden />
         </button>
       </div>
-      <p className="text-[11.5px] leading-relaxed text-muted-foreground">
-        {acceptanceReason || "Trip acceptance, invites, and participants are intentionally deferred."}
-      </p>
     </div>
   )
 }

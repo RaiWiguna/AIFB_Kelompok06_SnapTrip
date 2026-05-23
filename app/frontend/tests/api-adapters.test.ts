@@ -361,7 +361,8 @@ describe("frontend API adapters", () => {
 
     expect(workspaceHtml).toContain("Pantai Kuta planner preview")
     expect(workspaceHtml).toContain("Pantai Kuta planning notes")
-    expect(reviewHtml).toContain("Preview only")
+    expect(reviewHtml).toContain("Review and accept your plan")
+    expect(reviewHtml).toContain("Accept Plan")
     expect(reviewHtml).toContain("disabled")
     expect(reviewHtml).not.toContain("/plan/tcs_1/accepted")
   })

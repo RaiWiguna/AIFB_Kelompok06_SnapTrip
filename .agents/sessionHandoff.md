@@ -86,6 +86,11 @@
   - disabled fake planner acceptance and replaced `/new/review` plus `/plan/[id]/accepted` with explicit deferred-boundary pages,
   - integrated `/trips` with backend account summary data instead of runtime `MY_TRIPS`/`JOINED_TRIPS` fixtures,
   - added frontend planner preview adapter tests, integrated-page fixture import audit coverage, and a Playwright planner preview smoke test.
+- Aligned the planner review state with the target final-review UI:
+  - kept the review transition on `/plan/{session_id}` instead of navigating to a separate route,
+  - replaced the right-side Plan Assistant panel with the Final Review panel after `Continue to review`,
+  - updated review copy, visibility options, and primary `Accept Plan` CTA styling to match the mock reference,
+  - kept `Accept Plan` disabled because accepted Trip Plan writes, invites, and participants remain deferred.
 - Added ADR coverage for the completed integration decisions:
   - `docs/adr/0004-frontend-display-integration-and-api-adapter-boundary.md`,
   - `docs/adr/0005-trip-creation-media-and-recommendation-handoff-boundary.md`,
@@ -179,6 +184,16 @@ Visual verification after preserving planner page shells:
 - Captured 1920x1080 Playwright screenshots for every modified frontend page under `tmp/screenshot-*.png`: `/new/review`, `/plan`, `/plan/{session_id}`, `/plan/{session_id}/memo`, `/plan/{session_id}/itinerary`, `/plan/{session_id}/budget`, `/plan/{session_id}/accepted`, and `/trips`.
 - Seeded the dynamic planner routes through real memory-mode backend APIs before capture.
 - Shut down the temporary backend, frontend, and Playwright helper processes; no listeners remained on `127.0.0.1` ports `3000`, `3001`, `5173`, `8000`, or `8001`.
+
+Verification after planner final-review UI alignment:
+
+- `npm run test:frontend` passed: frontend 2 test files / 13 tests.
+- `npm run typecheck:frontend` passed.
+- `npm run lint:frontend` passed; frontend reports the same 5 existing warnings and 0 errors.
+- `npm run test:e2e` passed: planner preview opens selected recommendations, stays on `/plan/{session_id}` after review transition, and shows disabled `Accept Plan`.
+- `npm run build:frontend` passed.
+- Browser visual pass seeded a planner session through real memory-mode backend APIs and confirmed the final-review panel replaces chat on the same route.
+- Shut down temporary backend/frontend processes; no listeners remained on ports `3000` or `8000`.
 
 ## 4. Known Caveats
 
