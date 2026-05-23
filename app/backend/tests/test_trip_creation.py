@@ -51,6 +51,92 @@ def test_upload_classify_confirm_and_seeds(client):
     assert seeds.json()["seeds"]
 
 
+def test_session_recovery_returns_images_classification_and_selected_recommendations(client):
+    signup(client)
+    session_id = client.post("/api/trip-creation-sessions", json={"source": "upload"}).json()["session"]["id"]
+    client.post(
+        f"/api/trip-creation-sessions/{session_id}/images",
+        files=[("files", ("a.jpg", b"fake-jpg-data", "image/jpeg"))],
+    )
+    client.post(f"/api/trip-creation-sessions/{session_id}/classify")
+    client.post(
+        f"/api/trip-creation-sessions/{session_id}/confirm-categories",
+        json={"categories": ["pantai"]},
+    )
+    generated = client.post(f"/api/trip-creation-sessions/{session_id}/recommendations").json()
+    item_id = generated["items"][0]["id"]
+    client.post(
+        f"/api/trip-creation-sessions/{session_id}/selected-recommendations",
+        json={"recommendation_item_ids": [item_id]},
+    )
+
+    recovered = client.get(f"/api/trip-creation-sessions/{session_id}")
+
+    assert recovered.status_code == 200
+    body = recovered.json()["session"]
+    assert body["images"][0]["url"].startswith("/api/images/img_")
+    assert body["classification"]["per_image"][0]["image_id"] == body["images"][0]["id"]
+    assert body["latest_recommendations"]["items"][0]["id"] == item_id
+    assert body["selected_recommendation_ids"] == [item_id]
+
+
+def test_classification_includes_valid_source_image_refs(client):
+    user = signup(client)
+    image = client.app.state.store._insert(
+        "uploadedImages",
+        {
+            "id": "img_public_cover",
+            "owner_id": "usr_other",
+            "filename": "cover.jpg",
+            "content_type": "image/jpeg",
+            "size_bytes": 12,
+            "checksum_sha256": "checksum",
+            "gridfs_id": "img_public_cover",
+        },
+    )
+    client.app.state.store._insert(
+        "tripPlans",
+        {
+            "id": "trip_public_cover",
+            "owner_id": user["id"],
+            "title": "Public Cover",
+            "status": "accepted",
+            "visibility": "public",
+            "categories": ["pantai"],
+            "cover_image_id": image["id"],
+        },
+    )
+    session_id = client.post("/api/trip-creation-sessions", json={"source": "liked_trips"}).json()["session"]["id"]
+
+    sourced = client.post(f"/api/trip-creation-sessions/{session_id}/source-images", json=[image["id"]])
+    classified = client.post(f"/api/trip-creation-sessions/{session_id}/classify")
+
+    assert sourced.status_code == 200
+    assert classified.status_code == 200
+    assert classified.json()["classification"]["per_image"][0]["image_id"] == "img_public_cover"
+
+
+def test_source_images_reject_private_foreign_images(client):
+    signup(client)
+    client.app.state.store._insert(
+        "uploadedImages",
+        {
+            "id": "img_private_foreign",
+            "owner_id": "usr_other",
+            "filename": "cover.jpg",
+            "content_type": "image/jpeg",
+            "size_bytes": 12,
+            "checksum_sha256": "checksum",
+            "gridfs_id": "img_private_foreign",
+        },
+    )
+    session_id = client.post("/api/trip-creation-sessions", json={"source": "liked_trips"}).json()["session"]["id"]
+
+    sourced = client.post(f"/api/trip-creation-sessions/{session_id}/source-images", json=["img_private_foreign"])
+
+    assert sourced.status_code == 404
+
+
 def test_upload_rejects_invalid_type(client):
     signup(client)
     session_id = client.post("/api/trip-creation-sessions", json={"source": "upload"}).json()[

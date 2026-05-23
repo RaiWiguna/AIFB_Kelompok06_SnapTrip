@@ -20,7 +20,7 @@ export function TripCardLikeButton({
     event.preventDefault()
     event.stopPropagation()
     if (authHref) {
-      window.location.href = authHref
+      router.push(authHref)
       return
     }
     if (liked) {

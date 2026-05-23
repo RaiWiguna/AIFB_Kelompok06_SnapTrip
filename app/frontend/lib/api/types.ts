@@ -14,6 +14,7 @@ export type TripCardDisplay = {
   id: string
   title: string
   cover: string
+  sourceImageId?: string | null
   region: string
   categories: CategoryId[]
   days: number
@@ -88,6 +89,7 @@ export type BackendTripCard = {
   title: string
   categories: CategoryId[]
   cover_url: string
+  source_image_id?: string | null
   region: string
   duration_days?: number
   estimated_budget_idr?: number | null
@@ -96,5 +98,136 @@ export type BackendTripCard = {
   editor_pick?: boolean
   owner_display: { name: string; avatar_url: string; verified?: boolean }
   viewer?: { liked?: boolean }
+}
+
+export type UploadedImageDisplay = {
+  id: string
+  filename: string
+  contentType?: string | null
+  sizeBytes: number
+  sizeLabel: string
+  url: string
+  source: string
+  sourceLabel: string
+}
+
+export type CategoryScoreDisplay = {
+  id: CategoryId
+  label: string
+  value: number
+}
+
+export type PerImagePredictionDisplay = {
+  imageId: string
+  image?: UploadedImageDisplay
+  topCategory: CategoryId
+  topLabel: string
+  confidence: number
+  confidenceLabel: string
+}
+
+export type ClassificationDisplay = {
+  id: string
+  mode: string
+  modelVersion: string
+  perImage: PerImagePredictionDisplay[]
+  scores: CategoryScoreDisplay[]
+}
+
+export type BackendUploadedImage = {
+  id: string
+  filename: string
+  content_type?: string | null
+  size_bytes: number
+  url: string
+  source: string
+}
+
+export type BackendClassification = {
+  id: string
+  model_version: string
+  mode: string
+  per_image: {
+    image_id: string
+    top_category: CategoryId
+    predictions: { category: CategoryId; confidence: number }[]
+  }[]
+  aggregated: { category: CategoryId; confidence: number }[]
+}
+
+export type BackendRecommendationRun = {
+  id: string
+  summary: string
+  confirmed_categories: CategoryId[]
+  fallback_used: boolean
+  provider_modes?: Record<string, string>
+}
+
+export type BackendRecommendationItem = {
+  id: string
+  rank: number
+  name: string
+  categories: CategoryId[]
+  region: string
+  short_summary: string
+  description: string
+  match_reason: string
+  opening_hours_summary: { status: string; summary: string }
+  estimated_cost: { amount_idr?: number | null; label: string; is_estimate: boolean }
+  location: { address?: string | null; lat?: number | null; lng?: number | null; google_maps_uri?: string | null }
+  image_snaps: { photo_id: string; url?: string | null; attribution?: string | null }[]
+  warnings: { code: string; message: string }[]
+  source_notes: { source: string; note: string }[]
+  confidence: "high" | "medium" | "low"
+}
+
+export type RecommendationCardDisplay = {
+  id: string
+  name: string
+  match: number
+  category: string
+  subCategory: string
+  cover: string
+  estTime: string
+  estBudget: string
+  region: string
+  reason: string
+  hours?: string
+  estimateNote?: string
+  selected: boolean
+}
+
+export type BackendTripCreationSession = {
+  id: string
+  source: string
+  status: string
+  image_ids: string[]
+  source_image_refs: { image_id: string; source: string }[]
+  confirmed_categories: CategoryId[]
+  selected_recommendation_ids: string[]
+  latest_recommendation_run_id?: string | null
+  images: BackendUploadedImage[]
+  uploaded_images: BackendUploadedImage[]
+  source_images: BackendUploadedImage[]
+  classification?: BackendClassification | null
+  latest_recommendations?: {
+    run: BackendRecommendationRun
+    items: BackendRecommendationItem[]
+  } | null
+}
+
+export type TripCreationSessionDisplay = {
+  id: string
+  source: string
+  status: string
+  confirmedCategories: CategoryId[]
+  selectedRecommendationIds: string[]
+  latestRecommendationRunId?: string | null
+  images: UploadedImageDisplay[]
+  classification?: ClassificationDisplay | null
+  recommendations?: {
+    run: BackendRecommendationRun
+    items: RecommendationCardDisplay[]
+  } | null
 }
 

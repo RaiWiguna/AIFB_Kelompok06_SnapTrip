@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from app.api.deps import get_settings_from_app, get_store, require_user
@@ -16,6 +18,76 @@ async def get_owned_session(session_id: str, store, user):
     if not session or session["owner_id"] != user["id"]:
         raise HTTPException(status_code=404, detail="Trip creation session not found")
     return session
+
+
+def image_display(image: dict[str, Any], source: str) -> dict[str, Any]:
+    return {
+        "id": image["id"],
+        "filename": image.get("filename") or image["id"],
+        "content_type": image.get("content_type"),
+        "size_bytes": image.get("size_bytes", 0),
+        "url": f"/api/images/{image['id']}",
+        "source": source,
+    }
+
+
+async def image_is_public_cover(store, image_id: str) -> bool:
+    plans = await store.list_docs("tripPlans", cover_image_id=image_id)
+    return any(plan.get("status") == "accepted" and plan.get("visibility") == "public" for plan in plans)
+
+
+async def get_session_images(store, session: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    uploaded = []
+    for image_id in session.get("image_ids", []):
+        image = await store.find_one("uploadedImages", id=image_id)
+        if image:
+            uploaded.append(image_display(image, "upload"))
+
+    source_images = []
+    seen_source_ids = set()
+    for ref in session.get("source_image_refs", []):
+        image_id = ref.get("image_id")
+        if not image_id or image_id in seen_source_ids:
+            continue
+        seen_source_ids.add(image_id)
+        image = await store.find_one("uploadedImages", id=image_id)
+        if image:
+            source_images.append(image_display(image, ref.get("source") or "saved_or_liked_trip_plan"))
+    return uploaded, source_images
+
+
+async def latest_classification(store, session_id: str, owner_id: str) -> dict[str, Any] | None:
+    results = await store.list_docs("classificationResults", session_id=session_id, owner_id=owner_id)
+    if not results:
+        return None
+    return sorted(results, key=lambda item: item.get("updated_at") or item.get("created_at"), reverse=True)[0]
+
+
+async def latest_recommendations(store, session: dict[str, Any]) -> dict[str, Any] | None:
+    run = None
+    latest_run_id = session.get("latest_recommendation_run_id")
+    if latest_run_id:
+        run = await store.find_one("recommendationRuns", id=latest_run_id, owner_id=session["owner_id"])
+    if not run:
+        runs = await store.list_docs("recommendationRuns", session_id=session["id"], owner_id=session["owner_id"])
+        if runs:
+            run = sorted(runs, key=lambda item: item.get("updated_at") or item.get("created_at"), reverse=True)[0]
+    if not run:
+        return None
+    items = await store.list_docs("recommendationItems", run_id=run["id"], owner_id=session["owner_id"])
+    return {"run": run, "items": sorted(items, key=lambda item: item["rank"])}
+
+
+async def session_display(store, session: dict[str, Any]) -> dict[str, Any]:
+    uploaded, source_images = await get_session_images(store, session)
+    return {
+        **session,
+        "uploaded_images": uploaded,
+        "source_images": source_images,
+        "images": [*uploaded, *source_images],
+        "classification": await latest_classification(store, session["id"], session["owner_id"]),
+        "latest_recommendations": await latest_recommendations(store, session),
+    }
 
 
 @router.post("", status_code=201)
@@ -39,6 +111,16 @@ async def create_trip_session(
         },
     )
     return {"session": session}
+
+
+@router.get("/{session_id}")
+async def get_trip_session(
+    session_id: str,
+    store=Depends(get_store),
+    user=Depends(require_user),
+):
+    session = await get_owned_session(session_id, store, user)
+    return {"session": await session_display(store, session)}
 
 
 @router.post("/{session_id}/images")
@@ -72,16 +154,34 @@ async def add_source_images(
     session_id: str,
     image_ids: list[str],
     store=Depends(get_store),
+    settings=Depends(get_settings_from_app),
     user=Depends(require_user),
 ):
     session = await get_owned_session(session_id, store, user)
     refs = list(session.get("source_image_refs", []))
+    existing_ids = {ref.get("image_id") for ref in refs}
     for image_id in image_ids:
         image = await store.find_one("uploadedImages", id=image_id)
         if not image:
             raise HTTPException(status_code=404, detail=f"Image not found: {image_id}")
-        refs.append({"image_id": image_id, "source": "saved_or_liked_trip_plan"})
-    updated = await store.update_doc("tripCreationSessions", session_id, {"source_image_refs": refs})
+        owner_can_use = image.get("owner_id") == user["id"]
+        public_cover = await image_is_public_cover(store, image_id)
+        if not owner_can_use and not public_cover:
+            raise HTTPException(status_code=404, detail=f"Image not found: {image_id}")
+        if image_id not in existing_ids:
+            refs.append({"image_id": image_id, "source": "saved_or_liked_trip_plan"})
+            existing_ids.add(image_id)
+    total_images = len(session.get("image_ids", [])) + len(refs)
+    if total_images > settings.max_upload_images:
+        raise HTTPException(
+            status_code=422,
+            detail=f"A trip creation session can use at most {settings.max_upload_images} images",
+        )
+    updated = await store.update_doc(
+        "tripCreationSessions",
+        session_id,
+        {"source_image_refs": refs, "status": "images_selected"},
+    )
     return {"session": updated}
 
 
@@ -95,6 +195,13 @@ async def classify_session(
     session = await get_owned_session(session_id, store, user)
     images = []
     for image_id in session.get("image_ids", []):
+        image = await store.find_one("uploadedImages", id=image_id)
+        if image:
+            images.append(image)
+    for ref in session.get("source_image_refs", []):
+        image_id = ref.get("image_id")
+        if not image_id:
+            continue
         image = await store.find_one("uploadedImages", id=image_id)
         if image:
             images.append(image)

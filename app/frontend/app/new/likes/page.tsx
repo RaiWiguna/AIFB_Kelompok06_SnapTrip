@@ -2,9 +2,10 @@ import Image from "next/image"
 import Link from "next/link"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import { ArrowLeft, ArrowRight, Heart } from "lucide-react"
+import { ArrowLeft, Heart } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
+import { SourceImagesContinueButton } from "@/components/source-images-continue-button"
 import { StepIndicator, NEW_TRIP_STEPS } from "@/components/step-indicator"
 import { ApiError } from "@/lib/api/client"
 import { getLikedTripPlans } from "@/lib/api/likes"
@@ -20,6 +21,7 @@ export default async function NewFromLikesPage() {
     }
     throw error
   }
+  const usableImageIds = liked.map((trip) => trip.sourceImageId).filter((id): id is string => Boolean(id)).slice(0, 8)
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -39,13 +41,13 @@ export default async function NewFromLikesPage() {
 
         <div className="mt-3 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-accent">Step 1 · From likes</div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-accent">Step 1 - From likes</div>
             <h1 className="mt-3 font-display text-[clamp(2rem,3.6vw,3rem)] leading-[1.04] tracking-[-0.02em] text-primary text-balance">
               Pick from trips
               <br /> you&apos;ve liked.
             </h1>
             <p className="mt-3 max-w-xl text-[14.5px] leading-relaxed text-foreground/75">
-              Up to 8 covers can seed your new trip. We&apos;ll read them as if you&apos;d uploaded them yourself.
+              Up to 8 backend-owned covers can seed your new trip. Static fallback covers stay display-only.
             </p>
           </div>
           <StepIndicator current={1} steps={NEW_TRIP_STEPS} />
@@ -67,11 +69,11 @@ export default async function NewFromLikesPage() {
             </div>
           ) : (
             <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-              {liked.map((t, i) => {
-                const selected = i < 4
+              {liked.map((trip) => {
+                const selected = Boolean(trip.sourceImageId && usableImageIds.includes(trip.sourceImageId))
                 return (
                   <li
-                    key={t.id}
+                    key={trip.id}
                     className={
                       selected
                         ? "relative overflow-hidden rounded-2xl bg-card ring-2 ring-primary"
@@ -79,7 +81,7 @@ export default async function NewFromLikesPage() {
                     }
                   >
                     <div className="relative aspect-[4/3]">
-                      <Image src={t.cover || "/placeholder.svg"} alt="" fill sizes="33vw" className="object-cover" unoptimized />
+                      <Image src={trip.cover || "/placeholder.svg"} alt="" fill sizes="33vw" className="object-cover" unoptimized />
                       <span
                         className={
                           selected
@@ -92,8 +94,8 @@ export default async function NewFromLikesPage() {
                       </span>
                     </div>
                     <div className="px-3 py-2.5">
-                      <p className="truncate font-display text-[15px] text-primary">{t.title}</p>
-                      <p className="truncate text-[11.5px] text-muted-foreground">{t.region}</p>
+                      <p className="truncate font-display text-[15px] text-primary">{trip.title}</p>
+                      <p className="truncate text-[11.5px] text-muted-foreground">{trip.region}</p>
                     </div>
                   </li>
                 )
@@ -104,7 +106,8 @@ export default async function NewFromLikesPage() {
 
         <div className="mt-8 flex items-center justify-between gap-4 rounded-3xl bg-card p-4 ring-1 ring-border">
           <p className="text-[13px] text-muted-foreground">
-            <span className="font-medium text-foreground">4 of {Math.min(liked.length, 8)}</span> selected · max 8 images.
+            <span className="font-medium text-foreground">{usableImageIds.length} of {Math.min(liked.length, 8)}</span>{" "}
+            selected - max 8 backend-owned images.
           </p>
           <div className="flex items-center gap-2">
             <Link
@@ -114,13 +117,7 @@ export default async function NewFromLikesPage() {
               <ArrowLeft className="size-3.5" aria-hidden />
               Back
             </Link>
-            <Link
-              href="/new/review-images"
-              className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-[13.5px] font-medium text-primary-foreground hover:bg-[#0b2a25]"
-            >
-              Review selection
-              <ArrowRight className="size-3.5" aria-hidden />
-            </Link>
+            <SourceImagesContinueButton source="liked_trips" imageIds={usableImageIds} />
           </div>
         </div>
       </main>

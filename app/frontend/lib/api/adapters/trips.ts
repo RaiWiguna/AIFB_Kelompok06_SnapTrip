@@ -50,6 +50,7 @@ export function adaptTripCard(item: BackendTripCard): TripCardDisplay {
     id: item.id,
     title: item.title,
     cover: apiAssetUrl(item.cover_url),
+    sourceImageId: item.source_image_id,
     region: item.region,
     categories: item.categories,
     days: item.duration_days || 1,

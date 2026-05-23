@@ -4,8 +4,8 @@
 | --- | --- |
 | Document status | Active handoff |
 | Last updated | 2026-05-23 |
-| Branch | `feat/frontend-integration` |
-| Purpose | Resume point after Phase 7.0-7.3 frontend/backend integration |
+| Branch | `feat/new-trip-recommendation-flow` |
+| Purpose | Resume point after new-trip image-to-recommendation integration |
 
 ## 1. Completed This Session
 
@@ -64,6 +64,12 @@
   - added frontend env/API client/adapters under `app/frontend/lib/api/`,
   - wired signup, signin, account, Explore, likes, collections, collection detail, new-trip source picker, liked-trip source picker, and collection source picker to backend APIs,
   - repaired frontend `test`, `typecheck`, and `lint` script support.
+- Implemented new-trip image-to-recommendation integration:
+  - added `GET /api/trip-creation-sessions/{session_id}` with uploaded/source images, latest classification, latest recommendations, and selected recommendation IDs,
+  - allowed classification to include valid backend source-image refs from public covers or user-owned images,
+  - exposed optional `source_image_id` on trip cards so frontend source pickers can distinguish classifier-usable backend images from static fallback covers,
+  - added frontend trip creation and recommendation API helpers plus display adapters,
+  - wired `/new/upload`, `/new/review-images`, `/new/categories`, `/new/recommendations`, liked-trip source selection, and collection selection mode to backend APIs.
 
 ## 2. Current Repo Facts
 
@@ -73,13 +79,14 @@
 - Root npm scripts must orchestrate frontend npm and backend `uv`.
 - `.agents/integrationPhases.md` is the detailed source for Phase 7 integration work.
 - Current frontend visual behavior should be preserved; when frontend/backend shapes differ, prefer backend/API adapter improvements over UI redesign.
-- Phase 7.0-7.3 integrated pages now use backend API/adapters instead of runtime mock data, except static imagery placeholders from `IMG`.
+- Auth, account, Explore, likes, collections, source selection, upload, image review, category confirmation, recommendations, and selected-destination persistence now use backend API/adapters instead of runtime mock data.
 - Google Places API remains backend-only. Google Maps JavaScript API is allowed in frontend only for map rendering through `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`.
 - Agentic planner implementation is intentionally sequenced after Docker, remote compose, Caddy, and GitHub Actions deployment foundation.
 - Backend tests use `SNAPTRIP_STORAGE=memory` through test setup. Runtime defaults remain MongoDB-oriented.
 - Classifier local/test default is `CLASSIFIER_MODE=mock`; `real` mode intentionally requires a future trained artifact and implementation completion.
 - Root `npm run test` runs backend, frontend, and Playwright with `--pass-with-no-tests` until runnable E2E specs and app startup orchestration are added.
 - Real Gemini planner chat, persisted `trip_memo.v1`, `full_itinerary.v1`, `budget_plan.v1`, Trip Plan acceptance, invites, and participants remain Phase 11 scope.
+- Static frontend image assets are display fallbacks only; they must not be sent to classifier source-image APIs.
 
 ## 3. Verification Run
 
@@ -114,7 +121,16 @@ Verification after Phase 7.0-7.3 implementation:
 - `npm run lint` passed; frontend reports 5 existing warnings and 0 errors.
 - `npm run build` passed.
 - `npm run test` passed: backend 21 passed / 1 skipped, frontend 5 tests, Playwright no-test harness.
-- `npm audit --prefix app/frontend --omit=dev` reports existing production dependency advisories for `next@16.2.4` and bundled `postcss`; resolving them requires a separate dependency update decision.
+- Frontend audit was fixed by pinning Next and `eslint-config-next` to `16.3.0-canary.27`, the first available Next package version in this repo check that bundles non-vulnerable `postcss`.
+
+Verification after new-trip image-to-recommendation integration:
+
+- `npm run test:backend` passed: backend 24 passed / 1 skipped.
+- `npm run test:frontend` passed: frontend 2 test files / 7 tests.
+- `npm run typecheck` passed.
+- `npm run lint` passed; frontend reports the same 5 existing warnings and 0 errors.
+- `npm run build` passed.
+- Frontend source scan found no `GOOGLE_PLACES_API_KEY` or `GEMINI_API_KEY` references.
 
 ## 4. Known Caveats
 
@@ -123,17 +139,18 @@ Verification after Phase 7.0-7.3 implementation:
 - The remote compose file is intentionally a minimal valid Mongo stub so `npm run docker:config` passes during Phase 1-4. Phase 10 must replace it with full Caddy/API/web/Mongo production topology.
 - The real MobileNetV2 classifier path is a boundary placeholder; mock mode is the supported local/test default until a trained `.pt` artifact is promoted.
 - Google Places and Gemini provider calls are disabled by default in local/test env. Tests use mocked or deterministic provider behavior.
-- Some frontend routes still use mock data modules by design because they are outside Phase 7.0-7.3 or are explicit Phase 11/demo boundaries: Trip detail routes, planner routes, invite routes, and later new-trip/recommendation steps.
+- Some frontend routes still use mock data modules by design because they are outside the integrated pre-planner flow or are explicit Phase 11/demo boundaries: Trip detail routes, planner routes, and invite routes.
 - Google Maps frontend rendering is planned but not implemented. CI/local test defaults must pass without a Maps key by using the static fallback map.
 - No real secrets should be added to `.env.local`, `.env.local.example`, or deployment env examples.
 - ADR `docs/adr/0002-runtime-foundation-and-storage-boundaries.md` captures the durable implementation caveats and follow-up hardening work without tying those decisions to roadmap phase labels.
-- Frontend npm audit currently reports advisories against `next@16.2.4`; this was not changed in Phase 7.0-7.3 to avoid widening the scope into framework dependency upgrades.
+- Frontend npm audit is clean after the Next canary pin; revisit when a stable Next release includes the same fixes.
 
 ## 5. Recommended Next Start
 
 Continue Phase 7 from `.agents/integrationPhases.md`:
 
-1. Start at Phase 7.4: wire `/new/upload`, `/new/review-images`, and `/new/categories` to trip creation sessions, image upload, classification, and category confirmation.
-2. Then implement Phase 7.5 recommendations and destination selection against the existing backend recommendation endpoints.
-3. Keep Google Places and Gemini secrets backend-only; use Google Maps JS only for Phase 7.6 map rendering with a restricted public browser key.
-4. Do not implement Phase 11 planner acceptance, invites, participants, or persisted structured documents during Phase 7.
+1. Implement Google Maps rendering/fallback using backend coordinates and `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`.
+2. Integrate Trip Plan detail, memo, itinerary, destinations, and budget read views against backend detail endpoints.
+3. Add or promote deterministic planner preview data without implementing real Phase 11 planner chat.
+4. Add integrated Playwright coverage for Explore through image classification, recommendations, and selected-destination persistence.
+5. Keep Google Places and Gemini secrets backend-only, and do not implement Phase 11 planner acceptance, invites, participants, or persisted structured documents during Phase 7.

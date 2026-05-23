@@ -54,7 +54,7 @@ export default async function NewFromCollectionsPage() {
           {collections.map((c) => (
             <li key={c.slug}>
               <Link
-                href={`/collections/${c.slug}`}
+                href={`/collections/${c.slug}?select=1`}
                 className="group block overflow-hidden rounded-3xl bg-card ring-1 ring-border transition hover:ring-primary/40"
               >
                 <div className="grid grid-cols-2 gap-1 p-2">
