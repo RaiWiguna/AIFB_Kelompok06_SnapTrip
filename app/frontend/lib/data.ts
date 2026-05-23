@@ -305,7 +305,7 @@ export const TRIP_DETAIL = {
   comments: 142,
   likesK: "1.2K",
   saves: 892,
-  lastUpdated: "May 18, 2025",
+  lastUpdated: "May 18, 2026",
   ownerBio:
     "Sharing authentic travel experiences across Indonesia. Lover of nature, culture, and meaningful journeys.",
   ownerStats: { trips: 18, followers: "24.3K", responseRate: "96%" },
@@ -350,7 +350,7 @@ export const PREFERENCE_RESULT = {
 
 export const PLAN_DRAFT = {
   title: "Bali & Nusa Penida",
-  duration: "6 days · 2–8 Aug 2025",
+  duration: "6 days · 2–8 Aug 2026",
   itinerary: [
     { day: 1, name: "Ubud", note: "Arrive, rice terraces, local markets", cover: IMG.baliWomanTemple },
     { day: 2, name: "Waterfalls & Temples", note: "Tegenungan, Tirta Empul, Kintamani", cover: IMG.baliCoastalPano },
@@ -573,7 +573,7 @@ export const JOINED_TRIPS: MyTrip[] = [
 export const PLAN_SESSION = {
   id: "bali-nusa-penida-aug",
   title: "Bali & Nusa Penida",
-  range: "2–8 Aug 2025",
+  range: "2–8 Aug 2026",
   status: "draft" as const,
   participants: [
     { name: "You", avatar: AVATARS.you, role: "Owner" },
@@ -693,7 +693,7 @@ export const PLAN_SESSION = {
 export type InviteState = "valid" | "invalid" | "expired" | "revoked" | "joined" | "auth_required"
 
 export const INVITES: Record<string, { tripId: string; state: InviteState; ownerName: string }> = {
-  "bali-aug-2025": { tripId: "bali-nusa-penida-aug", state: "valid", ownerName: "Lintang Pertiwi" },
+  "bali-aug-2026": { tripId: "bali-nusa-penida-aug", state: "valid", ownerName: "Lintang Pertiwi" },
   expired: { tripId: "bali-nusa-penida-aug", state: "expired", ownerName: "Lintang Pertiwi" },
   revoked: { tripId: "bali-nusa-penida-aug", state: "revoked", ownerName: "Lintang Pertiwi" },
   joined: { tripId: "bali-nusa-penida-aug", state: "joined", ownerName: "Lintang Pertiwi" },
@@ -737,7 +737,7 @@ export function getPlanSession(id: string): PlanSession | null {
     id,
     title: PLAN_DRAFT.title,
     days: 6,
-    dates: "2–8 Aug 2025",
+    dates: "2–8 Aug 2026",
     travelers: 2,
     categories: ["Pantai", "Wisata Tradisional", "Air Terjun"],
     memo: PLAN_DRAFT.memo,
@@ -786,7 +786,7 @@ export type InvitePreview = {
 }
 
 export function getInvite(token: string): InvitePreview | null {
-  const raw = INVITES[token] ?? INVITES["bali-aug-2025"]
+  const raw = INVITES[token] ?? INVITES["bali-aug-2026"]
   if (!raw) return null
   const trip = MY_TRIPS.find((t) => t.id === raw.tripId)
   return {
@@ -798,7 +798,7 @@ export function getInvite(token: string): InvitePreview | null {
     role: token === "expired" || token === "revoked" ? "viewer" : "editor",
     participants: trip?.participants ?? 2,
     days: trip?.days ?? 6,
-    dates: "2–8 Aug 2025",
+    dates: "2–8 Aug 2026",
     region: "Bali, Indonesia",
     expiresIn: token === "expired" ? "yesterday" : "in 6 days",
   }

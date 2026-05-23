@@ -73,7 +73,7 @@ export function ShareSection() {
             <div className="rounded-2xl bg-card p-3.5 ring-1 ring-border/70">
               <div className="flex items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-[12px] text-foreground">
                 <span className="font-mono text-foreground/80">
-                  https://snaptrip.com/trip/bali-aug2025
+                  https://snaptrip.com/trip/bali-aug2026
                 </span>
                 <Copy className="ml-auto size-3.5 text-muted-foreground" aria-hidden />
               </div>
@@ -117,7 +117,7 @@ export function ShareSection() {
                   Bali & Nusa Penida
                 </div>
                 <div className="text-[12px] text-muted-foreground">
-                  6 days · 2–8 Aug 2025
+                  6 days · 2–8 Aug 2026
                 </div>
                 <div className="mt-2 flex items-center justify-between text-[12px] text-foreground/80">
                   <span className="inline-flex items-center gap-1.5">
