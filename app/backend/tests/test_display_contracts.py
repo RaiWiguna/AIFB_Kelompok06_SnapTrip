@@ -55,6 +55,22 @@ async def test_explore_returns_display_ready_card_and_viewer_state(client):
     assert item["like_count"] == 1
     assert item["save_count"] == 0
     assert item["viewer"]["liked"] is True
+    assert item["viewer"]["saved"] is False
+
+
+@pytest.mark.asyncio
+async def test_explore_card_marks_viewer_saved_state(client):
+    user = signup(client)
+    plan = await create_trip_plan(client, user["id"], title="Saved Coast", categories=["pantai"])
+    collection = client.post("/api/collections", json={"name": "Saved plans"}).json()["collection"]
+    client.post(f"/api/collections/{collection['id']}/items/{plan['id']}")
+
+    response = client.get("/api/explore", params={"category": "pantai"})
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["id"] == plan["id"]
+    assert item["viewer"]["saved"] is True
 
 
 @pytest.mark.asyncio

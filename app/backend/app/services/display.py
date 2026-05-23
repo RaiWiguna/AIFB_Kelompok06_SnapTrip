@@ -81,8 +81,12 @@ async def trip_card_display(
     likes = await store.list_docs("likes", trip_plan_id=plan["id"])
     saves = await store.list_docs("collectionItems", trip_plan_id=plan["id"])
     viewer_like = None
+    viewer_save = None
     if viewer_id:
         viewer_like = await store.find_one("likes", user_id=viewer_id, trip_plan_id=plan["id"])
+        viewer_save = await store.find_one(
+            "collectionItems", owner_id=viewer_id, trip_plan_id=plan["id"]
+        )
     categories = plan.get("categories", [])
     return {
         "id": plan["id"],
@@ -99,7 +103,7 @@ async def trip_card_display(
         "like_count": len(likes),
         "save_count": len(saves),
         "editor_pick": bool(plan.get("editor_pick")),
-        "viewer": {"liked": bool(viewer_like)},
+        "viewer": {"liked": bool(viewer_like), "saved": bool(viewer_save)},
     }
 
 

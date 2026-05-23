@@ -43,6 +43,29 @@ export async function getCollections(cookieHeader?: string): Promise<CollectionC
   return body.collections.map(adaptCollectionCard)
 }
 
+export async function createCollection(name: string): Promise<CollectionCardDisplay> {
+  const body = await apiFetch<{ collection: BackendCollectionCard }>("/api/collections", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  })
+  return adaptCollectionCard({
+    ...body.collection,
+    slug: body.collection.slug || `${body.collection.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${body.collection.id.slice(-6)}`,
+    description: body.collection.description || "Saved public trips for future planning.",
+    count: body.collection.count || 0,
+    cover_url: body.collection.cover_url || "",
+    cover_grid_urls: body.collection.cover_grid_urls || [],
+    visibility: body.collection.visibility || "private",
+    updated_label: body.collection.updated_label || "Updated recently",
+  })
+}
+
+export async function saveTripToCollection(collectionId: string, tripPlanId: string) {
+  return apiFetch<{ saved: true }>(`/api/collections/${collectionId}/items/${tripPlanId}`, {
+    method: "POST",
+  })
+}
+
 export async function getCollectionDetail(
   slugOrId: string,
   cookieHeader?: string,

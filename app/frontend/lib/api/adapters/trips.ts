@@ -64,6 +64,7 @@ export function adaptTripCard(item: BackendTripCard): TripCardDisplay {
     },
     editorPick: item.editor_pick,
     liked: Boolean(item.viewer?.liked),
+    saved: Boolean(item.viewer?.saved),
   }
 }
 

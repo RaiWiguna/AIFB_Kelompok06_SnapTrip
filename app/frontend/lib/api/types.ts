@@ -25,6 +25,7 @@ export type TripCardDisplay = {
   owner: { name: string; avatar: string; verified?: boolean }
   editorPick?: boolean
   liked?: boolean
+  saved?: boolean
 }
 
 export type ExploreTripDisplay = TripCardDisplay
@@ -99,7 +100,7 @@ export type BackendTripCard = {
   save_count: number
   editor_pick?: boolean
   owner_display: { name: string; avatar_url: string; verified?: boolean }
-  viewer?: { liked?: boolean }
+  viewer?: { liked?: boolean; saved?: boolean }
 }
 
 export type UploadedImageDisplay = {
