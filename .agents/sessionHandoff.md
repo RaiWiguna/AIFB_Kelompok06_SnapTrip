@@ -121,7 +121,7 @@ Verification after Phase 7.0-7.3 implementation:
 - `npm run lint` passed; frontend reports 5 existing warnings and 0 errors.
 - `npm run build` passed.
 - `npm run test` passed: backend 21 passed / 1 skipped, frontend 5 tests, Playwright no-test harness.
-- `npm audit --prefix app/frontend --omit=dev` reports existing production dependency advisories for `next@16.2.4` and bundled `postcss`; resolving them requires a separate dependency update decision.
+- Frontend audit was fixed by pinning Next and `eslint-config-next` to `16.3.0-canary.27`, the first available Next package version in this repo check that bundles non-vulnerable `postcss`.
 
 Verification after new-trip image-to-recommendation integration:
 
@@ -143,7 +143,7 @@ Verification after new-trip image-to-recommendation integration:
 - Google Maps frontend rendering is planned but not implemented. CI/local test defaults must pass without a Maps key by using the static fallback map.
 - No real secrets should be added to `.env.local`, `.env.local.example`, or deployment env examples.
 - ADR `docs/adr/0002-runtime-foundation-and-storage-boundaries.md` captures the durable implementation caveats and follow-up hardening work without tying those decisions to roadmap phase labels.
-- Frontend npm audit currently reports advisories against `next@16.2.4`; this was not changed to avoid widening the scope into framework dependency upgrades.
+- Frontend npm audit is clean after the Next canary pin; revisit when a stable Next release includes the same fixes.
 
 ## 5. Recommended Next Start
 

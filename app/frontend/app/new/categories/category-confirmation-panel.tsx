@@ -43,7 +43,7 @@ export function CategoryConfirmationPanel({
       router.refresh()
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        window.location.href = "/signin?next=%2Fnew%2Fcategories&action=plan"
+        router.push("/signin?next=%2Fnew%2Fcategories&action=plan")
         return
       }
       setError(err instanceof Error ? err.message : "Category confirmation failed")

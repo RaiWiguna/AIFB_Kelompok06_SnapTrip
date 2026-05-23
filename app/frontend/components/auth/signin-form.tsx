@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { ArrowRight, Lock, Mail } from "lucide-react"
 import { ApiError } from "@/lib/api/client"
 import { login } from "@/lib/api/auth"
@@ -12,6 +13,7 @@ export function SignInForm({
   successHref: string
   buttonLabel: string
 }) {
+  const router = useRouter()
   const [error, setError] = useState("")
   const [pending, setPending] = useState(false)
 
@@ -25,7 +27,7 @@ export function SignInForm({
         email: String(form.get("email") || ""),
         password: String(form.get("password") || ""),
       })
-      window.location.href = successHref
+      router.push(successHref)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to sign in.")
     } finally {

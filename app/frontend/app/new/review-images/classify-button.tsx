@@ -21,7 +21,7 @@ export function ClassifyButton({ sessionId, disabled }: { sessionId: string; dis
       router.refresh()
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        window.location.href = "/signin?next=%2Fnew%2Freview-images&action=plan"
+        router.push("/signin?next=%2Fnew%2Freview-images&action=plan")
         return
       }
       setError(err instanceof Error ? err.message : "Image classification failed")
