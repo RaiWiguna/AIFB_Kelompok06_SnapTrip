@@ -287,6 +287,8 @@ Acceptance:
 
 ### Phase 7.6 - Google Maps Rendering and Places Coordinates
 
+Status: Implemented in repo terms.
+
 Work:
 
 - Replace the stylized mock route map with Google Maps rendering while preserving the `TripRouteMap` prop surface where practical.
@@ -327,7 +329,15 @@ Acceptance:
 - Map pins correspond to backend coordinates.
 - CI and local tests pass without Google Maps key.
 
+Implementation notes:
+
+- `TripRouteMap` now attempts Google Maps JavaScript rendering only when `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY` is configured and at least one stop has coordinates.
+- The existing static route map remains the fallback for no-key, no-coordinate, and Maps-load-failure cases.
+- Frontend recommendation adapters preserve map-safe location fields without exposing Google Places or Gemini server secrets.
+
 ### Phase 7.7 - Trip Detail, Memo, Itinerary, Budget Read Integration
+
+Status: Implemented in repo terms.
 
 Work:
 
@@ -364,6 +374,12 @@ Acceptance:
 - Private trip access remains owner-only until Phase 11 participants exist.
 - Public accepted trips are readable without auth.
 - Missing document fields use safe fallback content instead of broken UI.
+
+Implementation notes:
+
+- Added `GET /api/trip-plans/{trip_plan_id}/detail` for read-optimized Trip Plan detail data.
+- The endpoint synthesizes memo, itinerary, budget, gallery, and destination display data from selected recommendations or curated destination seeds when accepted planner documents do not exist yet.
+- `/trips/[id]`, `/trips/[id]/memo`, `/trips/[id]/itinerary`, `/trips/[id]/destinations`, and `/trips/[id]/budget` now use backend detail data through frontend API adapters.
 
 ### Phase 7.8 - Planner Preview Contract Boundary
 

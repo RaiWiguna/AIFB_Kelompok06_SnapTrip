@@ -103,6 +103,11 @@ export function adaptRecommendationItem(
     reason: item.match_reason,
     hours: item.opening_hours_summary.summary,
     estimateNote: warningText(item),
+    address: item.location.address,
+    lat: item.location.lat,
+    lng: item.location.lng,
+    googleMapsUri: item.location.google_maps_uri,
+    placeEnrichmentId: item.place_enrichment_id,
     selected: selectedIds.includes(item.id),
   }
 }

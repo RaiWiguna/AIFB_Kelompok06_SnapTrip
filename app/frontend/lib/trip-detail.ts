@@ -52,6 +52,7 @@ export type DestinationStop = {
   order: number
   name: string
   region: string
+  address?: string | null
   cover: string
   blurb: string
   highlights: string[]
@@ -59,6 +60,10 @@ export type DestinationStop = {
   pin: { x: number; y: number }
   /** Days that visit this stop, e.g. [1] or [3, 4] */
   days: number[]
+  lat?: number | null
+  lng?: number | null
+  googleMapsUri?: string | null
+  placeEnrichmentId?: string | null
 }
 
 export type BudgetCategoryId = "accommodation" | "transport" | "meals" | "activities" | "other"

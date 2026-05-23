@@ -105,3 +105,87 @@ async def test_collection_detail_is_owner_scoped(client):
 
     response = client.get(f"/api/collections/{collection_id}")
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_trip_detail_returns_public_display_without_auth(client):
+    user = signup(client)
+    plan = await create_trip_plan(client, user["id"], title="Public Detail", categories=["pantai"])
+    client.post("/api/auth/logout")
+
+    response = client.get(f"/api/trip-plans/{plan['id']}/detail")
+
+    assert response.status_code == 200
+    detail = response.json()["detail"]
+    assert detail["trip_plan"]["title"] == "Public Detail"
+    assert detail["memo"]["markdown"]
+    assert detail["itinerary"]
+    assert detail["budget"]["categories"]
+    assert detail["gallery"]["thumbs"]
+    assert "GEMINI_API_KEY" not in str(detail)
+    assert "GOOGLE_PLACES_API_KEY" not in str(detail)
+
+
+@pytest.mark.asyncio
+async def test_trip_detail_private_access_is_owner_only(client):
+    owner = signup(client, "owner-detail@example.com")
+    plan = await create_trip_plan(client, owner["id"], visibility="private", title="Private Detail")
+
+    owner_response = client.get(f"/api/trip-plans/{plan['id']}/detail")
+    assert owner_response.status_code == 200
+
+    client.post("/api/auth/logout")
+    signup(client, "other-detail@example.com")
+
+    response = client.get(f"/api/trip-plans/{plan['id']}/detail")
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_trip_detail_synthesizes_destination_coordinates_from_selected_recommendations(client):
+    user = signup(client)
+    item = await client.app.state.store.save_doc(
+        "recommendationItems",
+        {
+            "id": "reci_detail_coords",
+            "run_id": "rec_detail",
+            "session_id": "tcs_detail",
+            "owner_id": user["id"],
+            "seed_id": "dest_kuta_beach",
+            "place_enrichment_id": "plc_detail",
+            "rank": 1,
+            "name": "Pantai Kuta",
+            "categories": ["pantai"],
+            "region": "Bali",
+            "short_summary": "Sunset beach stop",
+            "description": "A beach stop with reliable location context.",
+            "match_reason": "Matches beach preferences.",
+            "opening_hours_summary": {"status": "available", "summary": "Open daily"},
+            "estimated_cost": {"amount_idr": 150000, "label": "IDR 150,000", "source": "curated_seed", "is_estimate": True},
+            "location": {
+                "address": "Kuta, Bali",
+                "lat": -8.7185,
+                "lng": 115.1686,
+                "google_maps_uri": "https://maps.google.com/?cid=1",
+            },
+            "image_snaps": [],
+            "warnings": [],
+            "source_notes": [],
+            "confidence": "high",
+        },
+    )
+    plan = await create_trip_plan(client, user["id"], title="Coordinate Detail", categories=["pantai"])
+    await client.app.state.store.update_doc(
+        "tripPlans",
+        plan["id"],
+        {"selected_recommendation_ids": [item["id"]]},
+    )
+
+    response = client.get(f"/api/trip-plans/{plan['id']}/detail")
+
+    assert response.status_code == 200
+    stop = response.json()["detail"]["destinations"][0]
+    assert stop["lat"] == -8.7185
+    assert stop["lng"] == 115.1686
+    assert stop["google_maps_uri"] == "https://maps.google.com/?cid=1"
+    assert stop["place_enrichment_id"] == "plc_detail"

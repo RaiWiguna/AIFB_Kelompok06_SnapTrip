@@ -288,7 +288,12 @@ Current implementation notes:
   - `GET /api/trip-creation-sessions/{session_id}` returns reload-safe session display state with images, latest classification, latest recommendations, and selected recommendation IDs.
   - `/new/upload`, `/new/review-images`, `/new/categories`, and `/new/recommendations` use backend trip creation, classification, category confirmation, recommendation, and selection APIs.
   - Liked-trip and collection source flows only send backend-owned image IDs to classification; static fallback covers remain display-only.
-- Maps, trip detail document reads, planner preview promotion, E2E coverage, and deployment remain pending.
+- Trip detail map and read integration is implemented in repo terms:
+  - `GET /api/trip-plans/{trip_plan_id}/detail` returns read-optimized hero, destination, memo, itinerary, budget, gallery, owner, engagement, and owner-only participant placeholder data.
+  - Public accepted trip details are anonymous-readable; private and invite-only trip details remain owner-only until participant access is implemented later.
+  - `/trips/[id]`, `/trips/[id]/memo`, `/trips/[id]/itinerary`, `/trips/[id]/destinations`, and `/trips/[id]/budget` now read backend detail data through frontend adapters.
+  - `TripRouteMap` renders Google Maps JavaScript API markers when a browser-restricted `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY` and backend coordinates exist, and otherwise keeps the static route map fallback for local/test runs.
+- Planner preview promotion, E2E coverage, and deployment remain pending.
 
 ## 12. Phase 8 - Merged into Phase 7
 

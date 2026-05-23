@@ -1,5 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
+import { cookies } from "next/headers"
+import { notFound, redirect } from "next/navigation"
 import {
   ArrowRight,
   ArrowUpRight,
@@ -30,8 +32,8 @@ import { TripDayRow } from "@/components/trip-day-row"
 import { TripOwnerControls } from "@/components/trip-owner-controls"
 import { TripParticipants } from "@/components/trip-participants"
 import { TripRouteMap } from "@/components/trip-route-map"
-import { IMG, TRIP_DETAIL } from "@/lib/data"
-import { getTripDetailFull } from "@/lib/trip-detail"
+import { ApiError } from "@/lib/api/client"
+import { getTripPlanDetail } from "@/lib/api/trip-plans"
 
 export default async function TripDetailPage({
   params,
@@ -43,9 +45,18 @@ export default async function TripDetailPage({
   const { id } = await params
   const { as } = await searchParams
   const isOwnerView = as === "owner"
-  const t = TRIP_DETAIL
-  const detail = getTripDetailFull(id)
-  const detailFull = detail
+  const cookieHeader = (await cookies()).toString()
+  let trip
+  try {
+    trip = await getTripPlanDetail(id, cookieHeader)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) notFound()
+    if (error instanceof ApiError && error.status === 403) redirect("/forbidden")
+    throw error
+  }
+  const t = trip.summary
+  const detail = trip.detail
+  const detailFull = trip.detail
 
   const galleryThumbs = detail.galleryThumbs.slice(0, 6)
 
@@ -129,7 +140,7 @@ export default async function TripDetailPage({
           {/* Right: hero image + actions + thumbs */}
           <div className="relative">
             <div className="relative aspect-[16/9] w-full overflow-hidden rounded-[20px] ring-1 ring-border/70">
-              <Image src={IMG.heroLandscape} alt={t.title} fill className="object-cover" priority sizes="60vw" />
+              <Image src={detail.galleryThumbs[0]?.src || t.cover} alt={t.title} fill className="object-cover" priority sizes="60vw" unoptimized />
               {/* Top action cluster */}
               <div className="absolute right-4 top-4 flex items-center gap-2">
                 <button

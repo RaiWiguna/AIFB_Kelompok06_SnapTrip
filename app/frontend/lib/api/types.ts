@@ -87,6 +87,7 @@ export type BackendUser = {
 export type BackendTripCard = {
   id: string
   title: string
+  owner_id: string
   categories: CategoryId[]
   cover_url: string
   source_image_id?: string | null
@@ -165,6 +166,7 @@ export type BackendRecommendationRun = {
 
 export type BackendRecommendationItem = {
   id: string
+  place_enrichment_id?: string
   rank: number
   name: string
   categories: CategoryId[]
@@ -194,7 +196,102 @@ export type RecommendationCardDisplay = {
   reason: string
   hours?: string
   estimateNote?: string
+  address?: string | null
+  lat?: number | null
+  lng?: number | null
+  googleMapsUri?: string | null
+  placeEnrichmentId?: string | null
   selected: boolean
+}
+
+export type BackendTripDetailStop = {
+  order: number
+  name: string
+  region: string
+  address?: string | null
+  cover: string
+  blurb: string
+  highlights: string[]
+  pin: { x: number; y: number }
+  days: number[]
+  lat?: number | null
+  lng?: number | null
+  google_maps_uri?: string | null
+  place_enrichment_id?: string | null
+}
+
+export type BackendTripDetail = {
+  trip_plan: BackendTripCard & {
+    description: string
+    duration_nights: number
+    travelers: string
+    views: number
+    comments: number
+    last_updated: string
+    owner_bio: string
+    owner_stats: { trips: number; followers: string; response_rate: string }
+    budget_total: string
+    visibility: "private" | "invite_only" | "public"
+    status: "draft" | "accepted"
+  }
+  gallery: {
+    thumbs: { src: string; alt: string }[]
+    more: number
+  }
+  destinations: BackendTripDetailStop[]
+  memo: {
+    markdown: string
+    caption: string
+    source: string
+    items: number
+    tiles: { src: string; alt: string }[]
+  }
+  itinerary: {
+    day: number
+    title: string
+    summary: string
+    description: string
+    cover: string
+    dateLabel: string
+    highlights: string[]
+    activities: {
+      time: string
+      title: string
+      detail: string
+      location?: string
+      duration?: string
+    }[]
+    transport: { mode: string; from: string; to: string; durationLabel: string }
+    accommodation: { name: string; area: string; nights: number }
+    meals?: { breakfast?: string; lunch?: string; dinner?: string }
+    estCost: { value: string; note?: string }
+  }[]
+  budget: {
+    categories: {
+      id: string
+      label: string
+      amount: string
+      note: string
+      items: { label: string; amount: string; detail?: string }[]
+    }[]
+    daily: {
+      day: number
+      title: string
+      route: string
+      amounts: Record<string, number>
+    }[]
+    total_amount: string
+    total_label: string
+  }
+  participants: {
+    id: string
+    name: string
+    handle?: string
+    avatar: string
+    role: string
+    status: string
+    joinedLabel: string
+  }[]
 }
 
 export type BackendTripCreationSession = {

@@ -1,14 +1,24 @@
+import { cookies } from "next/headers"
+import { notFound, redirect } from "next/navigation"
 import { AppFooter } from "@/components/app-footer"
 import { AppHeader } from "@/components/app-header"
 import { TripBackLink } from "@/components/trip-back-link"
 import { TripItineraryBody } from "@/components/trip-itinerary-body"
-import { TRIP_DETAIL } from "@/lib/data"
-import { getTripDetailFull } from "@/lib/trip-detail"
+import { ApiError } from "@/lib/api/client"
+import { getTripPlanDetail } from "@/lib/api/trip-plans"
 
 export default async function TripItineraryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const t = TRIP_DETAIL
-  const detail = getTripDetailFull(id)
+  let trip
+  try {
+    trip = await getTripPlanDetail(id, (await cookies()).toString())
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) notFound()
+    if (error instanceof ApiError && error.status === 403) redirect("/forbidden")
+    throw error
+  }
+  const t = trip.summary
+  const detail = trip.detail
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
