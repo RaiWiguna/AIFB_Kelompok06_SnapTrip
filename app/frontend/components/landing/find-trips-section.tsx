@@ -11,12 +11,12 @@ function fmt(n: number) {
 }
 
 const FEATURED = [
-  TRIPS[0], // Editor's pick — Bali's Volcanic Coast
-  TRIPS[7], // Sunrise Hike Mount Batur
-  TRIPS[8], // Hidden Waterfalls of North Bali
-  TRIPS[9], // Pink Beach Escape Labuan Bajo
-  TRIPS[10], // Ubud Culture & Heritage Walk
-  TRIPS[11], // Ijen Blue Fire Adventure
+  { ...TRIPS[0], cover: IMG.landingCardBaliVolcanicCoast }, // Editor's pick — Bali's Volcanic Coast
+  { ...TRIPS[7], cover: IMG.landingCardMountBaturSunrise }, // Sunrise Hike Mount Batur
+  { ...TRIPS[8], cover: IMG.landingCardNorthBaliWaterfalls }, // Hidden Waterfalls of North Bali
+  { ...TRIPS[9], cover: IMG.landingCardPinkBeachLabuanBajo }, // Pink Beach Escape Labuan Bajo
+  { ...TRIPS[10], cover: IMG.landingCardUbudCulture }, // Ubud Culture & Heritage Walk
+  { ...TRIPS[11], cover: IMG.landingCardIjenBlueFire }, // Ijen Blue Fire Adventure
 ]
 
 export function FindTripsSection() {

@@ -15,6 +15,19 @@ import { IMG, PLAN_DRAFT } from "@/lib/data"
 import { SiteHeader } from "@/components/site-header"
 import { Float, LandingSection, Reveal, Sheen, Stagger, StaggerItem } from "@/components/landing/landing-motion"
 
+const HERO_MEMO_IMAGES = [
+  IMG.heroMemoNusaPenida,
+  IMG.heroMemoAmedSidemen,
+  IMG.heroMemoBromo,
+  IMG.heroMemoUbudTemple,
+]
+
+const HERO_ITINERARY_COVERS = [
+  IMG.heroItineraryUbud,
+  IMG.heroItineraryWaterfallsTemples,
+  IMG.heroItineraryNusaPenida,
+]
+
 export function HeroSection() {
   return (
     <LandingSection className="relative isolate min-h-[100svh] overflow-hidden bg-background md:min-h-[125svh]">
@@ -110,22 +123,20 @@ export function HeroSection() {
                 </button>
               </div>
               <div className="grid grid-cols-4 gap-2">
-                {[IMG.diamondBeach, IMG.baliCoastalPano, IMG.bromoTengger, IMG.baliWomanTemple].map(
-                  (src, i) => (
-                    <div
-                      key={i}
-                      className="relative aspect-square overflow-hidden rounded-xl ring-1 ring-black/5"
-                    >
-                      <Image
-                        src={src || "/placeholder.svg"}
-                        alt=""
-                        fill
-                        sizes="120px"
-                        className="object-cover"
-                      />
-                    </div>
-                  ),
-                )}
+                {HERO_MEMO_IMAGES.map((src) => (
+                  <div
+                    key={src}
+                    className="relative aspect-square overflow-hidden rounded-xl ring-1 ring-black/5"
+                  >
+                    <Image
+                      src={src || "/placeholder.svg"}
+                      alt=""
+                      fill
+                      sizes="120px"
+                      className="object-cover"
+                    />
+                  </div>
+                ))}
               </div>
               <div className="mt-3.5 flex items-center justify-between">
                 <p className="text-[12.5px] leading-relaxed text-muted-foreground">
@@ -158,7 +169,7 @@ export function HeroSection() {
               </div>
 
               <ul className="mt-4 divide-y divide-border/60">
-                {PLAN_DRAFT.itinerary.map((d) => (
+                {PLAN_DRAFT.itinerary.map((d, i) => (
                   <li
                     key={d.day}
                     className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
@@ -169,7 +180,7 @@ export function HeroSection() {
                     </div>
                     <div className="relative size-9 overflow-hidden rounded-lg ring-1 ring-black/5">
                       <Image
-                        src={d.cover || "/placeholder.svg"}
+                        src={HERO_ITINERARY_COVERS[i] || d.cover || "/placeholder.svg"}
                         alt=""
                         fill
                         sizes="36px"
