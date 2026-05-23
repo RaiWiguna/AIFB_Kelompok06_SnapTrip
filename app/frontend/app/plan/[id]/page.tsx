@@ -1,20 +1,33 @@
 import Image from "next/image"
 import Link from "next/link"
-import { notFound } from "next/navigation"
+import { cookies } from "next/headers"
+import { notFound, redirect } from "next/navigation"
 import { AppFooter } from "@/components/app-footer"
 import { AppHeader } from "@/components/app-header"
 import { PlannerWorkspace } from "@/components/planner/planner-workspace"
-import { IMG, getPlanSession } from "@/lib/data"
+import { ApiError } from "@/lib/api/client"
+import { getPlannerPreview } from "@/lib/api/planner-preview"
 
 export default async function PlannerSessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const session = getPlanSession(id)
-  if (!session) notFound()
+  const cookieHeader = (await cookies()).toString()
+  let preview
+  try {
+    preview = await getPlannerPreview(id, cookieHeader)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      redirect(`/signin?next=${encodeURIComponent(`/plan/${id}`)}&action=trips`)
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      notFound()
+    }
+    throw error
+  }
 
   return (
     <div className="relative flex min-h-screen flex-col bg-background text-foreground">
       <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[700px] opacity-40">
-        <Image src={IMG.baliCoastalPano || "/placeholder.svg"} alt="" fill sizes="100vw" className="object-cover" />
+        <Image src="/landing/bali-coastal-pano.png" alt="" fill sizes="100vw" className="object-cover" />
         <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/85 to-background" />
       </div>
 
@@ -26,10 +39,15 @@ export default async function PlannerSessionPage({ params }: { params: Promise<{
             My trips
           </Link>
           <span className="mx-2">/</span>
-          <span className="text-foreground">{session.title}</span>
+          <span className="text-foreground">{preview.title}</span>
         </nav>
 
-        <PlannerWorkspace tripId={session.id} title={session.title} />
+        <PlannerWorkspace
+          tripId={preview.sessionId}
+          title={preview.title}
+          initialState={preview.workspace}
+          acceptanceReason={preview.acceptance.reason}
+        />
       </main>
 
       <AppFooter />

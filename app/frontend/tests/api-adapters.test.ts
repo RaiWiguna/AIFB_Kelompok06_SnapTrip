@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
+import { readFileSync } from "node:fs"
 import { apiAssetUrl, ApiError } from "../lib/api/client"
 import { adaptTripCard, formatIdr } from "../lib/api/adapters/trips"
 import { adaptTripDetail } from "../lib/api/adapters/trip-detail"
+import { adaptPlannerPreview } from "../lib/api/adapters/planner-preview"
 import { adaptRecommendationItem, adaptTripCreationSession } from "../lib/api/adapters/trip-creation"
 import { TripRouteMap } from "../components/trip-route-map"
+import { PlannerWorkspace } from "../components/planner/planner-workspace"
+import { ReviewPanel } from "../components/planner/review-panel"
 import { env } from "../lib/env"
 
 describe("frontend API adapters", () => {
@@ -238,6 +242,131 @@ describe("frontend API adapters", () => {
     expect(trip.detail.memoMarkdown).toContain("Why this trip")
   })
 
+  it("adapts planner preview data into document and workspace display shapes", () => {
+    const preview = adaptPlannerPreview({
+      session_id: "tcs_1",
+      title: "Pantai Kuta planner preview",
+      status: "planner_preview",
+      categories: ["pantai"],
+      source: "selected_recommendations",
+      documents: { persisted: false, schema_versions: [], note: "Preview only." },
+      destinations: [
+        {
+          order: 1,
+          name: "Pantai Kuta",
+          region: "Kuta, Bali",
+          address: "Kuta, Bali",
+          cover: "/landing/diamond-beach.png",
+          blurb: "Beach stop",
+          highlights: ["Pantai"],
+          pin: { x: 40, y: 50 },
+          days: [1],
+          lat: -8.7185,
+          lng: 115.1686,
+          google_maps_uri: "https://maps.google.com/?cid=1",
+          place_enrichment_id: "plc_1",
+        },
+      ],
+      memo: {
+        markdown: "## Why this trip",
+        caption: "Pantai Kuta planning notes",
+        source: "SnapTrip recommendation data",
+        items: 1,
+        tiles: [{ src: "/landing/diamond-beach.png", alt: "Pantai Kuta" }],
+      },
+      itinerary: [
+        {
+          day: 1,
+          title: "Pantai Kuta",
+          summary: "Beach stop",
+          description: "Beach stop",
+          cover: "/landing/diamond-beach.png",
+          dateLabel: "Day 1",
+          highlights: ["Pantai"],
+          activities: [{ time: "09:00", title: "Explore", detail: "Beach stop" }],
+          transport: { mode: "Drive", from: "Start", to: "Pantai Kuta", durationLabel: "Flexible" },
+          accommodation: { name: "Local stay", area: "Bali", nights: 1 },
+          estCost: { value: "IDR 150,000" },
+        },
+      ],
+      budget: {
+        categories: [
+          { id: "accommodation", label: "Accommodation", amount: "IDR 52,500", note: "(Estimated)", items: [] },
+          { id: "activities", label: "Activities", amount: "IDR 30,000", note: "(Estimated)", items: [] },
+          { id: "meals", label: "Meals", amount: "IDR 27,000", note: "(Estimated)", items: [] },
+        ],
+        daily: [
+          {
+            day: 1,
+            title: "Pantai Kuta",
+            route: "Beach stop",
+            amounts: { accommodation: 52500, transport: 30000, meals: 27000, activities: 30000, other: 10500 },
+          },
+        ],
+        total_amount: "IDR 150,000",
+        total_label: "per person - 1 days",
+      },
+      gallery: { thumbs: [{ src: "/landing/diamond-beach.png", alt: "Pantai Kuta" }], more: 0 },
+      acceptance: { enabled: false, reason: "Acceptance is deferred." },
+    })
+
+    expect(preview.documentsPersisted).toBe(false)
+    expect(preview.detail.memoMarkdown).toContain("Why this trip")
+    expect(preview.detail.destinations[0]).toMatchObject({
+      lat: -8.7185,
+      lng: 115.1686,
+      googleMapsUri: "https://maps.google.com/?cid=1",
+    })
+    expect(preview.workspace).toMatchObject({
+      memoCaption: "Pantai Kuta planning notes",
+      memoItemCount: 1,
+      itineraryDays: [{ day: 1, name: "Pantai Kuta", note: "Beach stop" }],
+      budget: {
+        total: "IDR 150,000",
+        perPerson: "IDR 150,000",
+        accommodation: "IDR 52,500",
+      },
+    })
+  })
+
+  it("renders planner preview state without enabling acceptance", () => {
+    const state = {
+      memoCaption: "Pantai Kuta planning notes",
+      memoItemCount: 1,
+      memoTiles: [{ src: "/landing/diamond-beach.png", alt: "Pantai Kuta" }],
+      itineraryDays: [{ day: 1, name: "Pantai Kuta", note: "Beach stop" }],
+      budget: {
+        total: "IDR 150,000",
+        perPerson: "IDR 150,000",
+        accommodation: "IDR 52,500",
+        activities: "IDR 30,000",
+        meals: "IDR 27,000",
+      },
+    }
+    const workspaceHtml = renderToStaticMarkup(
+      createElement(PlannerWorkspace, {
+        tripId: "tcs_1",
+        title: "Pantai Kuta planner preview",
+        initialState: state,
+        acceptanceReason: "Acceptance is deferred.",
+      }),
+    )
+    const reviewHtml = renderToStaticMarkup(
+      createElement(ReviewPanel, {
+        state: { ...state, memoTilesCount: state.memoTiles.length },
+        acceptanceReason: "Acceptance is deferred.",
+        onBack: () => undefined,
+      }),
+    )
+
+    expect(workspaceHtml).toContain("Pantai Kuta planner preview")
+    expect(workspaceHtml).toContain("Pantai Kuta planning notes")
+    expect(reviewHtml).toContain("Review and accept your plan")
+    expect(reviewHtml).toContain("Accept Plan")
+    expect(reviewHtml).toContain("disabled")
+    expect(reviewHtml).not.toContain("/plan/tcs_1/accepted")
+  })
+
   it("renders the static route map fallback without a Google Maps key", () => {
     env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY = ""
     const html = renderToStaticMarkup(
@@ -306,6 +435,26 @@ describe("frontend API adapters", () => {
     const error = new ApiError(401, "unauthorized", "Authentication required")
     expect(error.status).toBe(401)
     expect(error.message).toBe("Authentication required")
+  })
+
+  it("keeps integrated planner and trips pages off runtime fixture modules", () => {
+    const integratedFiles = [
+      "app/plan/[id]/page.tsx",
+      "app/plan/[id]/memo/page.tsx",
+      "app/plan/[id]/itinerary/page.tsx",
+      "app/plan/[id]/budget/page.tsx",
+      "app/new/review/page.tsx",
+      "app/trips/page.tsx",
+    ]
+
+    for (const file of integratedFiles) {
+      const source = readFileSync(file, "utf8")
+      expect(source).not.toContain("@/lib/data")
+      expect(source).not.toContain("@/lib/trip-detail")
+      expect(source).not.toContain("getPlanSession")
+      expect(source).not.toContain("PLAN_DRAFT")
+      expect(source).not.toContain("PLAN_SESSION")
+    }
   })
 })
 

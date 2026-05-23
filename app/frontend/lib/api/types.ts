@@ -1,4 +1,5 @@
 import type { CategoryId } from "@/lib/categories"
+import type { TripDetailFull } from "@/lib/trip-detail"
 
 export type CurrentUserDisplay = {
   id: string
@@ -326,5 +327,58 @@ export type TripCreationSessionDisplay = {
     run: BackendRecommendationRun
     items: RecommendationCardDisplay[]
   } | null
+}
+
+export type BackendPlannerPreview = {
+  session_id: string
+  title: string
+  status: "planner_preview"
+  categories: CategoryId[]
+  source: string
+  documents: {
+    persisted: boolean
+    schema_versions: string[]
+    note: string
+  }
+  destinations: BackendTripDetailStop[]
+  memo: BackendTripDetail["memo"]
+  itinerary: BackendTripDetail["itinerary"]
+  budget: BackendTripDetail["budget"]
+  gallery: BackendTripDetail["gallery"]
+  acceptance: {
+    enabled: boolean
+    reason: string
+  }
+}
+
+export type PlannerWorkspaceInitialState = {
+  memoCaption: string | null
+  memoItemCount: number
+  memoTiles: { src: string; alt: string }[]
+  itineraryDays: { day: number; name: string; note: string }[]
+  budget: {
+    total: string
+    perPerson: string
+    accommodation: string
+    activities: string
+    meals: string
+  } | null
+}
+
+export type PlannerPreviewDisplay = {
+  sessionId: string
+  title: string
+  status: "planner_preview"
+  categories: CategoryId[]
+  documentsPersisted: boolean
+  documentNote: string
+  acceptance: {
+    enabled: boolean
+    reason: string
+  }
+  detail: TripDetailFull
+  budgetTotalAmount: string
+  budgetTotalLabel: string
+  workspace: PlannerWorkspaceInitialState
 }
 

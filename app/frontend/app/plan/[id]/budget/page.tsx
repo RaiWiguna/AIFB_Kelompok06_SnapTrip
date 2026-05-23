@@ -1,17 +1,28 @@
-import { notFound } from "next/navigation"
+import { cookies } from "next/headers"
+import { notFound, redirect } from "next/navigation"
 import { AppFooter } from "@/components/app-footer"
 import { AppHeader } from "@/components/app-header"
 import { TripBackLink } from "@/components/trip-back-link"
 import { TripBudgetExplorer } from "@/components/trip-budget-explorer"
-import { getPlanSession, TRIP_DETAIL } from "@/lib/data"
-import { getTripDetailFull } from "@/lib/trip-detail"
+import { ApiError } from "@/lib/api/client"
+import { getPlannerPreview } from "@/lib/api/planner-preview"
 
 export default async function PlannerBudgetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const session = getPlanSession(id)
-  if (!session) notFound()
-  const t = TRIP_DETAIL
-  const detail = getTripDetailFull(id)
+  const cookieHeader = (await cookies()).toString()
+  let preview
+  try {
+    preview = await getPlannerPreview(id, cookieHeader)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      redirect(`/signin?next=${encodeURIComponent(`/plan/${id}/budget`)}&action=trips`)
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      notFound()
+    }
+    throw error
+  }
+  const detail = preview.detail
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -23,14 +34,14 @@ export default async function PlannerBudgetPage({ params }: { params: Promise<{ 
         <header className="mt-6 flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
           <div>
             <p className="text-[12.5px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
-              Budget Plan · Draft
+              Budget Plan - Draft
             </p>
             <h1 className="mt-2 font-display text-[clamp(2rem,3vw,2.8rem)] leading-[1.05] tracking-[-0.02em] text-primary">
-              {session.title}
+              {preview.title}
             </h1>
             <p className="mt-2 max-w-2xl text-[13.5px] leading-relaxed text-foreground/75">
-              Estimated budget for {t.durationDays} days, {t.travelers ?? "2–8"} travelers. Numbers update as you
-              continue planning with the assistant.
+              Estimated budget for {detail.itinerary.length} days, 2-8 travelers. Numbers update as you continue
+              planning with the assistant.
             </p>
           </div>
           <div className="rounded-2xl bg-card px-4 py-3 ring-1 ring-border/70">
@@ -43,8 +54,8 @@ export default async function PlannerBudgetPage({ params }: { params: Promise<{ 
           tripId={id}
           categories={detail.budgetCategories}
           daily={detail.budgetDaily}
-          totalLabel={`per person · ${t.durationDays} days`}
-          totalAmount={t.budget.total}
+          totalLabel={preview.budgetTotalLabel}
+          totalAmount={preview.budgetTotalAmount}
           backHref={`/plan/${id}`}
           backLabel="Back to planner"
         />

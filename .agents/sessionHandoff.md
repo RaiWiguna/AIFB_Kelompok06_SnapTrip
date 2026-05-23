@@ -4,8 +4,8 @@
 | --- | --- |
 | Document status | Active handoff |
 | Last updated | 2026-05-23 |
-| Branch | `feat/trip-detail-map-integration` |
-| Purpose | Resume point after trip detail map and read integration |
+| Branch | `feat/planner-preview-boundary` |
+| Purpose | Resume point after planner preview boundary and integration cleanup |
 
 ## 1. Completed This Session
 
@@ -78,6 +78,24 @@
   - wired `/trips/[id]`, `/trips/[id]/memo`, `/trips/[id]/itinerary`, `/trips/[id]/destinations`, and `/trips/[id]/budget` to backend detail data,
   - added `@googlemaps/js-api-loader` and updated `TripRouteMap` to render Google Maps markers only when `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY` and backend coordinates are present,
   - preserved the existing static route map fallback for no-key, no-coordinate, local, CI, and Maps-load-failure paths.
+- Implemented planner preview boundary and integration cleanup:
+  - added authenticated owner-only `GET /api/planner-preview/{trip_creation_session_id}`,
+  - generated deterministic, non-persisted preview memo, itinerary, budget, gallery, and destinations from selected recommendations,
+  - wired `/plan/[id]`, `/plan/[id]/memo`, `/plan/[id]/itinerary`, and `/plan/[id]/budget` to backend planner preview data,
+  - renamed scripted planner behavior to `planner-demo` and kept it UI-only until the full planner implementation,
+  - disabled fake planner acceptance and replaced `/new/review` plus `/plan/[id]/accepted` with explicit deferred-boundary pages,
+  - integrated `/trips` with backend account summary data instead of runtime `MY_TRIPS`/`JOINED_TRIPS` fixtures,
+  - added frontend planner preview adapter tests, integrated-page fixture import audit coverage, and a Playwright planner preview smoke test.
+- Aligned the planner review state with the target final-review UI:
+  - kept the review transition on `/plan/{session_id}` instead of navigating to a separate route,
+  - replaced the right-side Plan Assistant panel with the Final Review panel after `Continue to review`,
+  - updated review copy, visibility options, and primary `Accept Plan` CTA styling to match the mock reference,
+  - kept `Accept Plan` disabled because accepted Trip Plan writes, invites, and participants remain deferred.
+- Added ADR coverage for the completed integration decisions:
+  - `docs/adr/0004-frontend-display-integration-and-api-adapter-boundary.md`,
+  - `docs/adr/0005-trip-creation-media-and-recommendation-handoff-boundary.md`,
+  - `docs/adr/0006-trip-plan-detail-read-model-and-map-rendering-boundary.md`,
+  - `docs/adr/0007-planner-preview-and-deferred-acceptance-boundary.md`.
 
 ## 2. Current Repo Facts
 
@@ -87,12 +105,12 @@
 - Root npm scripts must orchestrate frontend npm and backend `uv`.
 - `.agents/integrationPhases.md` is the detailed source for Phase 7 integration work.
 - Current frontend visual behavior should be preserved; when frontend/backend shapes differ, prefer backend/API adapter improvements over UI redesign.
-- Auth, account, Explore, likes, collections, source selection, upload, image review, category confirmation, recommendations, selected-destination persistence, Trip Plan detail reads, and Trip Plan map rendering now use backend API/adapters instead of runtime mock data.
+- Auth, account, Explore, likes, collections, source selection, upload, image review, category confirmation, recommendations, selected-destination persistence, planner preview reads, Trip Plan detail reads, and Trip Plan map rendering now use backend API/adapters instead of runtime mock data.
 - Google Places API remains backend-only. Google Maps JavaScript API is allowed in frontend only for map rendering through `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`.
 - Agentic planner implementation is intentionally sequenced after Docker, remote compose, Caddy, and GitHub Actions deployment foundation.
 - Backend tests use `SNAPTRIP_STORAGE=memory` through test setup. Runtime defaults remain MongoDB-oriented.
 - Classifier local/test default is `CLASSIFIER_MODE=mock`; `real` mode intentionally requires a future trained artifact and implementation completion.
-- Root `npm run test` runs backend, frontend, and Playwright with `--pass-with-no-tests` until runnable E2E specs and app startup orchestration are added.
+- Root `npm run test` runs backend, frontend, and Playwright; Playwright now starts memory-mode backend and frontend dev servers for a planner preview smoke test and refuses to reuse stale local servers.
 - Real Gemini planner chat, persisted `trip_memo.v1`, `full_itinerary.v1`, `budget_plan.v1`, Trip Plan acceptance, invites, and participants remain Phase 11 scope.
 - Static frontend image assets are display fallbacks only; they must not be sent to classifier source-image APIs.
 
@@ -149,6 +167,34 @@ Verification after trip detail map and read integration:
 - `npm run build` passed.
 - Frontend source scan found no `GOOGLE_PLACES_API_KEY` or `GEMINI_API_KEY` references.
 
+Verification after planner preview boundary and integration cleanup:
+
+- `npm run test:backend` passed: backend 31 passed / 1 skipped.
+- `npm run test:frontend` passed: frontend 2 test files / 13 tests.
+- `npm run typecheck` passed.
+- `npm run lint` passed; frontend reports 5 existing warnings and 0 errors.
+- `npm run build` passed.
+- `npm run test:e2e` passed: 1 Playwright planner preview smoke test.
+- `npm run test` passed after clearing stale local listeners: backend 31 passed / 1 skipped, frontend 13 tests, Playwright 1 smoke test.
+- Frontend integrated planner/trips page and component scan found no runtime `@/lib/data`, `@/lib/trip-detail`, `getPlanSession`, `PLAN_DRAFT`, `PLAN_SESSION`, `MY_TRIPS`, or `JOINED_TRIPS` usage.
+- Frontend source scan found no `GOOGLE_PLACES_API_KEY` or `GEMINI_API_KEY` references.
+
+Visual verification after preserving planner page shells:
+
+- Captured 1920x1080 Playwright screenshots for every modified frontend page under `tmp/screenshot-*.png`: `/new/review`, `/plan`, `/plan/{session_id}`, `/plan/{session_id}/memo`, `/plan/{session_id}/itinerary`, `/plan/{session_id}/budget`, `/plan/{session_id}/accepted`, and `/trips`.
+- Seeded the dynamic planner routes through real memory-mode backend APIs before capture.
+- Shut down the temporary backend, frontend, and Playwright helper processes; no listeners remained on `127.0.0.1` ports `3000`, `3001`, `5173`, `8000`, or `8001`.
+
+Verification after planner final-review UI alignment:
+
+- `npm run test:frontend` passed: frontend 2 test files / 13 tests.
+- `npm run typecheck:frontend` passed.
+- `npm run lint:frontend` passed; frontend reports the same 5 existing warnings and 0 errors.
+- `npm run test:e2e` passed: planner preview opens selected recommendations, stays on `/plan/{session_id}` after review transition, and shows disabled `Accept Plan`.
+- `npm run build:frontend` passed.
+- Browser visual pass seeded a planner session through real memory-mode backend APIs and confirmed the final-review panel replaces chat on the same route.
+- Shut down temporary backend/frontend processes; no listeners remained on ports `3000` or `8000`.
+
 ## 4. Known Caveats
 
 - Mongo runtime integration is implemented at the store level, but the current automated tests use the in-memory store. Future Phase 6 work should add testcontainers MongoDB/GridFS coverage.
@@ -156,17 +202,18 @@ Verification after trip detail map and read integration:
 - The remote compose file is intentionally a minimal valid Mongo stub so `npm run docker:config` passes during Phase 1-4. Phase 10 must replace it with full Caddy/API/web/Mongo production topology.
 - The real MobileNetV2 classifier path is a boundary placeholder; mock mode is the supported local/test default until a trained `.pt` artifact is promoted.
 - Google Places and Gemini provider calls are disabled by default in local/test env. Tests use mocked or deterministic provider behavior.
-- Some frontend routes still use mock data modules by design because they are outside the integrated pre-planner flow or are explicit Phase 11/demo boundaries: planner routes, accepted-plan preview routes, and invite routes.
+- Some frontend routes and components still use mock data modules by design for static marketing imagery, landing-page examples, invite demo boundaries, and explicit Phase 11 placeholders.
 - Google Maps frontend rendering is implemented behind `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`; CI/local test defaults still pass without a Maps key by using the static fallback map.
+- The planner preview endpoint requires selected recommendations and intentionally returns `422` before destination selection.
+- Planner acceptance, invites, participant writes, and persisted structured planner documents remain intentionally unavailable even though preview document shapes are now rendered.
 - No real secrets should be added to `.env.local`, `.env.local.example`, or deployment env examples.
-- ADR `docs/adr/0002-runtime-foundation-and-storage-boundaries.md` captures the durable implementation caveats and follow-up hardening work without tying those decisions to roadmap phase labels.
+- ADRs under `docs/adr/` capture durable implementation caveats and follow-up hardening work without tying those decisions to roadmap phase labels.
 - Frontend npm audit is clean after the Next canary pin; revisit when a stable Next release includes the same fixes.
 
 ## 5. Recommended Next Start
 
-Continue Phase 7 from `.agents/integrationPhases.md`:
+Continue from `.agents/implementationPhase.md` and `.agents/integrationPhases.md`:
 
-1. Add or promote deterministic planner preview data without implementing real Phase 11 planner chat.
-2. Add integrated Playwright coverage for Explore through image classification, recommendations, selected-destination persistence, trip detail reads, and static map fallback.
-3. Keep Google Places and Gemini secrets backend-only, and do not implement Phase 11 planner acceptance, invites, participants, or persisted structured documents during Phase 7.
-4. After Phase 7 cleanup, proceed to integrated product E2E validation and deployment foundation.
+1. Expand integrated Playwright coverage beyond the planner smoke path to Explore/filter/like/save, upload/classification, recommendation selection, trip detail reads, and static map fallback.
+2. Keep Google Places and Gemini secrets backend-only, and do not implement Phase 11 planner acceptance, invites, participants, or persisted structured documents until after deployment foundation.
+3. After broader integrated E2E coverage passes, proceed to Docker, remote compose, Caddy, GitHub Actions, and rollback work.

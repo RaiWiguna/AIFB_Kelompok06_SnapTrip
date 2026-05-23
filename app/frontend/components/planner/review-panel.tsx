@@ -1,6 +1,5 @@
 "use client"
 
-import Link from "next/link"
 import { ArrowLeft, ArrowRight, CheckCircle2, Globe2, Lock, Users } from "lucide-react"
 
 type WorkspaceState = {
@@ -18,12 +17,12 @@ type WorkspaceState = {
 }
 
 export function ReviewPanel({
-  tripId,
   state,
+  acceptanceReason,
   onBack,
 }: {
-  tripId: string
   state: WorkspaceState
+  acceptanceReason?: string
   onBack: () => void
 }) {
   const memoOk = state.memoTilesCount > 0 && Boolean(state.memoCaption)
@@ -103,14 +102,16 @@ export function ReviewPanel({
           <ArrowLeft className="size-3.5" aria-hidden />
           Back to assistant
         </button>
-        <Link
-          href={`/plan/${tripId}/accepted`}
-          className="group inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-primary px-4 py-2.5 text-[13.5px] font-medium text-primary-foreground transition-colors hover:bg-[#0b2a25]"
+        <button
+          type="button"
+          disabled
+          title={acceptanceReason || "Acceptance is implemented in the later planner flow."}
+          className="inline-flex flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-full bg-primary px-4 py-2.5 text-[13.5px] font-medium text-primary-foreground ring-1 ring-primary/20 disabled:opacity-100"
         >
           <CheckCircle2 className="size-4" aria-hidden />
           Accept Plan
-          <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
-        </Link>
+          <ArrowRight className="size-4" aria-hidden />
+        </button>
       </div>
     </div>
   )

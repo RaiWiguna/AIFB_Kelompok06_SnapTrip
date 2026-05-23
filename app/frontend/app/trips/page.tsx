@@ -1,12 +1,29 @@
 import Image from "next/image"
 import Link from "next/link"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { ArrowUpRight, Calendar, Plus, Users } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
-import { JOINED_TRIPS, MY_TRIPS, type MyTrip } from "@/lib/data"
+import { ApiError } from "@/lib/api/client"
+import { getAccountSummary } from "@/lib/api/account"
+import type { MyTripDisplay } from "@/lib/api/types"
 import { VisibilityBadge } from "@/components/visibility-badge"
 
-export default function MyTripsPage() {
+export default async function MyTripsPage() {
+  const cookieHeader = (await cookies()).toString()
+  let summary
+  try {
+    summary = await getAccountSummary(cookieHeader)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      redirect("/signin?next=%2Ftrips&action=trips")
+    }
+    throw error
+  }
+  const ownedTrips = summary.recentOwnedTrips
+  const joinedTrips = summary.joinedTrips
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <AppHeader active="trips" />
@@ -34,9 +51,9 @@ export default function MyTripsPage() {
         <section className="mt-10">
           <div className="mb-4 flex items-end justify-between">
             <h2 className="font-display text-[24px] tracking-tight text-primary">Owned by you</h2>
-            <span className="text-[13px] text-muted-foreground">{MY_TRIPS.length} trips</span>
+            <span className="text-[13px] text-muted-foreground">{ownedTrips.length} trips</span>
           </div>
-          {MY_TRIPS.length === 0 ? (
+          {ownedTrips.length === 0 ? (
             <EmptyState
               title="No accepted trips yet."
               description="Start with images or saved inspiration to draft your first plan."
@@ -44,7 +61,7 @@ export default function MyTripsPage() {
             />
           ) : (
             <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {MY_TRIPS.map((t) => (
+              {ownedTrips.map((t) => (
                 <li key={t.id}>
                   <MyTripCard trip={t} owned />
                 </li>
@@ -57,16 +74,16 @@ export default function MyTripsPage() {
         <section className="mt-12">
           <div className="mb-4 flex items-end justify-between">
             <h2 className="font-display text-[24px] tracking-tight text-primary">Joined through invites</h2>
-            <span className="text-[13px] text-muted-foreground">{JOINED_TRIPS.length} trips</span>
+            <span className="text-[13px] text-muted-foreground">{joinedTrips.length} trips</span>
           </div>
-          {JOINED_TRIPS.length === 0 ? (
+          {joinedTrips.length === 0 ? (
             <EmptyState
               title="No joined trips yet."
               description="Open an invite link from a friend to view their accepted trip."
             />
           ) : (
             <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {JOINED_TRIPS.map((t) => (
+              {joinedTrips.map((t) => (
                 <li key={t.id}>
                   <MyTripCard trip={t} />
                 </li>
@@ -80,14 +97,14 @@ export default function MyTripsPage() {
   )
 }
 
-function MyTripCard({ trip, owned }: { trip: MyTrip; owned?: boolean }) {
+function MyTripCard({ trip, owned }: { trip: MyTripDisplay; owned?: boolean }) {
   return (
     <Link
       href={owned ? `/trips/${trip.id}?as=owner` : `/trips/${trip.id}`}
       className="group flex flex-col overflow-hidden rounded-3xl bg-card ring-1 ring-border transition hover:ring-primary/40"
     >
       <div className="relative aspect-[16/9]">
-        <Image src={trip.cover || "/placeholder.svg"} alt="" fill sizes="33vw" className="object-cover" />
+        <Image src={trip.cover || "/placeholder.svg"} alt="" fill sizes="33vw" className="object-cover" unoptimized />
         <div className="absolute left-3 top-3">
           <VisibilityBadge visibility={trip.visibility} />
         </div>

@@ -1,18 +1,30 @@
 import Link from "next/link"
+import { cookies } from "next/headers"
+import { notFound, redirect } from "next/navigation"
 import { ArrowRight, Bookmark, Calendar, CheckCircle2, MapPin, Share2, Wallet } from "lucide-react"
 
 import { AppFooter } from "@/components/app-footer"
 import { AppHeader } from "@/components/app-header"
 import { AcceptedHeroBadge } from "@/components/planner/accepted-hero-badge"
-import { TRIP_DETAIL, getPlanSession } from "@/lib/data"
-import { getTripDetailFull } from "@/lib/trip-detail"
+import { ApiError } from "@/lib/api/client"
+import { getPlannerPreview } from "@/lib/api/planner-preview"
 
 export default async function PlanAcceptedPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const session = getPlanSession(id)
-  const t = TRIP_DETAIL
-  const detail = getTripDetailFull(id)
-  const title = session?.title ?? t.title
+  const cookieHeader = (await cookies()).toString()
+  let preview
+  try {
+    preview = await getPlannerPreview(id, cookieHeader)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      redirect(`/signin?next=${encodeURIComponent(`/plan/${id}/accepted`)}&action=trips`)
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      notFound()
+    }
+    throw error
+  }
+  const detail = preview.detail
 
   const summary = [
     {
@@ -28,60 +40,56 @@ export default async function PlanAcceptedPage({ params }: { params: Promise<{ i
     {
       icon: <Wallet className="size-4" aria-hidden />,
       label: "Budget",
-      value: t.budget.total,
+      value: preview.budgetTotalAmount,
     },
     {
       icon: <Bookmark className="size-4" aria-hidden />,
       label: "Memo items",
-      value: `${detail.memoItems} saved`,
+      value: `${detail.memoItems} previewed`,
     },
   ]
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <AppHeader active="trips" />
+      <AppHeader active="plan" />
 
       <main className="mx-auto w-full max-w-[1180px] flex-1 px-6 pb-20 pt-8 md:px-10">
-        {/* Hero */}
         <section className="relative overflow-hidden rounded-3xl bg-secondary/60 px-6 py-10 ring-1 ring-border/70 md:px-10 md:py-14">
-          {/* Decorative confetti dots */}
           <AcceptedHeroBadge />
 
           <div className="relative grid gap-8 md:grid-cols-[1fr_auto] md:items-end">
             <div>
               <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-primary ring-1 ring-primary/20">
                 <CheckCircle2 className="size-3.5" aria-hidden />
-                Plan accepted
+                Acceptance deferred
               </span>
               <h1 className="mt-4 max-w-2xl font-display text-[clamp(2.2rem,3.6vw,3.4rem)] leading-[1.02] tracking-[-0.02em] text-primary">
-                {title}
+                {preview.title}
               </h1>
               <p className="mt-3 max-w-xl text-[14.5px] leading-relaxed text-foreground/75">
-                Your plan has been saved as a real trip. Share it with travel companions, refine the details whenever
-                you like, or jump in and start checking things off.
+                This screen preserves the accepted-plan preview layout, but no Trip Plan has been accepted or saved.
+                Real acceptance, invites, and participants remain deferred to the full planner flow.
               </p>
 
               <div className="mt-6 flex flex-wrap items-center gap-2">
                 <Link
-                  href={`/trips/${id}`}
+                  href={`/plan/${id}`}
                   className="group inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-[13.5px] font-medium text-primary-foreground transition-colors hover:bg-[#0b2a25]"
                 >
-                  Open trip
+                  Back to planner
                   <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
                 </Link>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-full bg-card px-4 py-2.5 text-[13px] font-medium text-foreground/85 ring-1 ring-border/70 transition-colors hover:bg-secondary"
+                  disabled
+                  className="inline-flex cursor-not-allowed items-center gap-2 rounded-full bg-card px-4 py-2.5 text-[13px] font-medium text-muted-foreground ring-1 ring-border/70"
                 >
                   <Share2 className="size-4" aria-hidden />
                   Share
                 </button>
-                <Link
-                  href={`/plan/${id}`}
-                  className="inline-flex items-center gap-2 rounded-full bg-card px-4 py-2.5 text-[13px] font-medium text-foreground/70 ring-1 ring-border/70 transition-colors hover:bg-secondary hover:text-foreground"
-                >
-                  Keep editing
-                </Link>
+                <span className="inline-flex items-center gap-2 rounded-full bg-card px-4 py-2.5 text-[13px] font-medium text-muted-foreground ring-1 ring-border/70">
+                  Preview only
+                </span>
               </div>
             </div>
 
@@ -96,76 +104,65 @@ export default async function PlanAcceptedPage({ params }: { params: Promise<{ i
             </div>
           </div>
 
-          {/* Summary stat row */}
           <ul className="relative mt-8 grid grid-cols-2 gap-2 md:grid-cols-4">
             {summary.map((s) => (
-              <li
-                key={s.label}
-                className="rounded-2xl bg-card px-4 py-3 ring-1 ring-border/70"
-              >
+              <li key={s.label} className="rounded-2xl bg-card px-4 py-3 ring-1 ring-border/70">
                 <div className="flex items-center gap-2 text-foreground/70">
                   <span className="grid size-7 place-items-center rounded-lg bg-secondary text-primary ring-1 ring-border/70">
                     {s.icon}
                   </span>
                   <span className="text-[11.5px] font-medium uppercase tracking-[0.06em]">{s.label}</span>
                 </div>
-                <p className="mt-2 font-display text-[18px] leading-tight tracking-tight text-primary">
-                  {s.value}
-                </p>
+                <p className="mt-2 font-display text-[18px] leading-tight tracking-tight text-primary">{s.value}</p>
               </li>
             ))}
           </ul>
         </section>
 
-        {/* What's inside — three preview cards mirroring the trip overview structure */}
         <section className="mt-8 grid gap-4 md:grid-cols-3">
           <PreviewCard
-            tripId={id}
-            href={`/trips/${id}/memo`}
+            href={`/plan/${id}/memo`}
             icon={<Bookmark className="size-4" aria-hidden />}
             label="Trip Memo"
             heading={detail.memoCaption}
-            footer={`${detail.memoItems} items · ${detail.galleryThumbs.length + 1} photos`}
+            footer={`${detail.memoItems} items - ${detail.galleryThumbs.length + 1} photos`}
             tile={detail.memoTiles[0]?.src}
           />
           <PreviewCard
-            tripId={id}
-            href={`/trips/${id}/itinerary`}
+            href={`/plan/${id}/itinerary`}
             icon={<Calendar className="size-4" aria-hidden />}
             label="Full Itinerary"
             heading={`${detail.itinerary.length} days, ${detail.destinations.length} stops`}
-            footer={`Day 1 — ${detail.itinerary[0]?.title ?? "Arrive"} · Day ${detail.itinerary.length} — ${
+            footer={`Day 1 - ${detail.itinerary[0]?.title ?? "Arrive"} - Day ${detail.itinerary.length} - ${
               detail.itinerary[detail.itinerary.length - 1]?.title ?? "Depart"
             }`}
           />
           <PreviewCard
-            tripId={id}
-            href={`/trips/${id}/budget`}
+            href={`/plan/${id}/budget`}
             icon={<Wallet className="size-4" aria-hidden />}
             label="Budget Plan"
-            heading={t.budget.total}
-            footer={`${detail.budgetCategories.length} categories · ${detail.budgetDaily.length}-day breakdown`}
+            heading={preview.budgetTotalAmount}
+            footer={`${detail.budgetCategories.length} categories - ${detail.budgetDaily.length}-day breakdown`}
           />
         </section>
 
-        {/* Next steps */}
         <section className="mt-8 rounded-3xl bg-secondary/50 p-6 ring-1 ring-border/70 md:p-8">
-          <h2 className="font-display text-[22px] tracking-tight text-primary">What you can do next</h2>
+          <h2 className="font-display text-[22px] tracking-tight text-primary">What happens next</h2>
           <ol className="mt-4 grid gap-3 md:grid-cols-3">
             <NextStep
               n={1}
-              title="Invite travel companions"
-              body="Share the trip with a private invite or make it public so anyone with the link can follow along."
+              title="Acceptance is deferred"
+              body="The preview has not been saved as an accepted Trip Plan."
             />
             <NextStep
               n={2}
-              title="Refine details over time"
-              body="Add photos, swap stops, tweak the budget, or write longer journal entries directly on the trip page."
+              title="Keep previewing"
+              body="Return to the planner preview to inspect the deterministic draft."
             />
             <NextStep
               n={3}
-              title="Track it on the road"
-              body="Mark days as complete and capture quick notes as the trip unfolds — your plan stays in sync."
+              title="Full planner later"
+              body="Invites, participants, and persisted planner documents remain later scope."
             />
           </ol>
         </section>
@@ -184,7 +181,6 @@ function PreviewCard({
   footer,
   tile,
 }: {
-  tripId: string
   href: string
   icon: React.ReactNode
   label: string

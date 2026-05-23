@@ -24,28 +24,19 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { AgentTimeline } from "@/components/planner/agent-timeline"
 import { ChatComposer } from "@/components/planner/chat-composer"
 import { ReviewPanel } from "@/components/planner/review-panel"
-import { type AgentPatch, type ChatTurn, pickFlow, SUGGESTED_PROMPTS } from "@/lib/planner-mock"
+import { type AgentPatch, type ChatTurn, pickFlow, SUGGESTED_PROMPTS } from "@/lib/planner-demo"
+import type { PlannerWorkspaceInitialState } from "@/lib/api/types"
 
 type PlannerWorkspaceProps = {
   tripId: string
   title: string
+  initialState?: PlannerWorkspaceInitialState
+  acceptanceReason?: string
 }
 
 type DayDraft = { day: number; name: string; note: string }
 
-type WorkspaceState = {
-  memoCaption: string | null
-  memoItemCount: number
-  memoTiles: { src: string; alt: string }[]
-  itineraryDays: DayDraft[]
-  budget: {
-    total: string
-    perPerson: string
-    accommodation: string
-    activities: string
-    meals: string
-  } | null
-}
+type WorkspaceState = PlannerWorkspaceInitialState
 
 const EMPTY_STATE: WorkspaceState = {
   memoCaption: null,
@@ -57,10 +48,10 @@ const EMPTY_STATE: WorkspaceState = {
 
 type Phase = "plan" | "review"
 
-export function PlannerWorkspace({ tripId, title }: PlannerWorkspaceProps) {
+export function PlannerWorkspace({ tripId, title, initialState, acceptanceReason }: PlannerWorkspaceProps) {
   const [phase, setPhase] = useState<Phase>("plan")
   const [runs, setRuns] = useState<ChatTurn[]>([])
-  const [state, setState] = useState<WorkspaceState>(EMPTY_STATE)
+  const [state, setState] = useState<WorkspaceState>(initialState ?? EMPTY_STATE)
   const [isRunning, setIsRunning] = useState(false)
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
   const scrollerRef = useRef<HTMLDivElement | null>(null)
@@ -167,8 +158,8 @@ export function PlannerWorkspace({ tripId, title }: PlannerWorkspaceProps) {
     timersRef.current = []
     setIsRunning(false)
     setRuns([])
-    setState(EMPTY_STATE)
-  }, [])
+    setState(initialState ?? EMPTY_STATE)
+  }, [initialState])
 
   const isEmpty = runs.length === 0
   const canReview =
@@ -300,7 +291,12 @@ export function PlannerWorkspace({ tripId, title }: PlannerWorkspaceProps) {
             </div>
 
             <div className="flex items-center gap-2">
-              <button className="inline-flex items-center gap-2 rounded-full bg-secondary px-3.5 py-1.5 text-[12.5px] font-medium ring-1 ring-border">
+              <button
+                type="button"
+                aria-disabled="true"
+                title="Sharing is implemented in the later planner flow."
+                className="inline-flex cursor-not-allowed items-center gap-2 rounded-full bg-secondary px-3.5 py-1.5 text-[12.5px] font-medium text-foreground ring-1 ring-border"
+              >
                 <Share2 className="size-3.5" aria-hidden />
                 Share
               </button>
@@ -409,7 +405,7 @@ export function PlannerWorkspace({ tripId, title }: PlannerWorkspaceProps) {
                     className="absolute inset-0 flex flex-col overflow-hidden rounded-2xl bg-secondary/40 p-4 ring-1 ring-border/70"
                   >
                     <ReviewPanel
-                      tripId={tripId}
+                      acceptanceReason={acceptanceReason}
                       state={{
                         memoCaption: state.memoCaption,
                         memoItemCount: state.memoItemCount,
@@ -466,7 +462,7 @@ function MemoCard({
         <motion.div layout className="grid grid-cols-4 gap-2">
           {tiles.map((t, i) => (
             <motion.div
-              key={t.src}
+              key={`${t.src}-${i}`}
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: i * 0.05 }}

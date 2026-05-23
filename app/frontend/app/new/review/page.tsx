@@ -1,21 +1,31 @@
 import Image from "next/image"
 import Link from "next/link"
-import {
-  ArrowLeft,
-  Calendar,
-  CheckCircle2,
-  Globe2,
-  Lock,
-  ShieldCheck,
-  Users,
-} from "lucide-react"
+import { ArrowLeft, Calendar, CheckCircle2, Globe2, Lock, ShieldCheck, Users } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { StepIndicator, NEW_TRIP_STEPS } from "@/components/step-indicator"
-import { PLAN_SESSION } from "@/lib/data"
+
+const REVIEW_PREVIEW = {
+  id: "planner-preview",
+  title: "Planner preview boundary",
+  range: "Generated after selected recommendations",
+  memoText: {
+    overview: "Preview memo data is rendered for review only and is not persisted as trip_memo.v1.",
+  },
+  itinerary: [
+    { day: 1, name: "Selected destination", cover: "/landing/diamond-beach.png" },
+    { day: 2, name: "Draft route", cover: "/landing/bali-coastal-pano.png" },
+    { day: 3, name: "Budget estimate", cover: "/landing/bromo-tengger.png" },
+  ],
+  budgetDoc: {
+    total: "Preview only",
+    perPerson: "Not accepted",
+    estimateNote: "Acceptance, invites, participants, and persisted documents remain deferred.",
+  },
+}
 
 export default function ReviewStepPage() {
-  const s = PLAN_SESSION
+  const s = REVIEW_PREVIEW
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <AppHeader active="new" />
@@ -34,49 +44,47 @@ export default function ReviewStepPage() {
 
         <div className="mt-3 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-accent">Step 5 · Final review</div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-accent">Step 5 - Final review</div>
             <h1 className="mt-3 font-display text-[clamp(2.2rem,4vw,3.4rem)] leading-[1.04] tracking-[-0.02em] text-primary text-balance">
-              Review and accept <br /> your trip plan.
+              Review your preview <br /> before the full planner.
             </h1>
             <p className="mt-3 max-w-xl text-[14.5px] leading-relaxed text-foreground/75">
-              Once accepted, your Trip Memo, Full Itinerary, and Budget Plan become canonical. You can change visibility
-              and invite participants any time afterward.
+              The layout stays ready for acceptance, but this integration step only previews deterministic Trip Memo,
+              Full Itinerary, and Budget Plan data.
             </p>
           </div>
           <StepIndicator current={5} steps={NEW_TRIP_STEPS} />
         </div>
 
         <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
-          {/* Document checklist */}
           <section>
             <h2 className="font-display text-[22px] tracking-tight text-primary">Required documents</h2>
             <p className="mt-1 text-[13px] text-muted-foreground">
-              Each section is validated before acceptance. Anything missing blocks the accept action.
+              These sections are previewed only. Validation and acceptance stay in the later planner flow.
             </p>
             <ul className="mt-4 space-y-3">
               <DocCheckRow
                 title="Trip Memo"
                 status="ok"
-                summary="Overview, style, notes, assumptions"
+                summary="Preview overview, style, notes, assumptions"
                 detail={s.memoText.overview}
               />
               <DocCheckRow
                 title="Full Itinerary"
                 status="ok"
-                summary={`${s.itinerary.length} days · ${s.itinerary.length} stops mapped`}
-                detail={`Day 1 — ${s.itinerary[0].name}, Day ${s.itinerary.length} — ${
+                summary={`${s.itinerary.length} preview days - ${s.itinerary.length} stops mapped`}
+                detail={`Day 1 - ${s.itinerary[0].name}, Day ${s.itinerary.length} - ${
                   s.itinerary[s.itinerary.length - 1].name
                 }`}
               />
               <DocCheckRow
                 title="Budget Plan"
-                status="ok"
-                summary={`Total ${s.budgetDoc.total} · Per person ${s.budgetDoc.perPerson}`}
+                status="warn"
+                summary={`Total ${s.budgetDoc.total} - Per person ${s.budgetDoc.perPerson}`}
                 detail={s.budgetDoc.estimateNote}
               />
             </ul>
 
-            {/* Selected destinations */}
             <h2 className="mt-10 font-display text-[22px] tracking-tight text-primary">Selected destinations</h2>
             <ul className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3">
               {s.itinerary.map((d) => (
@@ -93,7 +101,6 @@ export default function ReviewStepPage() {
             </ul>
           </section>
 
-          {/* Accept sidebar */}
           <aside className="lg:sticky lg:top-24 lg:self-start">
             <div className="rounded-3xl bg-card p-6 ring-1 ring-border shadow-[0_30px_80px_-30px_rgba(29,36,32,0.35)]">
               <h3 className="font-display text-[20px] tracking-tight text-primary">{s.title}</h3>
@@ -114,12 +121,12 @@ export default function ReviewStepPage() {
                   <VisibilityOption
                     icon={<Users className="size-4" aria-hidden />}
                     label="Invite only"
-                    description="Visible to participants you invite."
+                    description="Available after real participant support."
                   />
                   <VisibilityOption
                     icon={<Globe2 className="size-4" aria-hidden />}
                     label="Public"
-                    description="Appears in Explore and counts toward likes/saves."
+                    description="Available after accepted trips can publish."
                   />
                 </div>
               </div>
@@ -127,28 +134,29 @@ export default function ReviewStepPage() {
               <div className="mt-5 flex items-start gap-2 rounded-xl bg-secondary p-3 text-[12.5px] text-foreground/80 ring-1 ring-border">
                 <ShieldCheck className="mt-0.5 size-3.5 text-[color:var(--color-success)]" aria-hidden />
                 <span>
-                  All required documents are valid. Estimates and source notes are preserved with the accepted plan.
+                  Preview sections are available. No accepted Trip Plan, invite, or participant record is created.
                 </span>
               </div>
 
               <div className="mt-5 flex items-center gap-2">
                 <Link
-                  href={`/plan/${s.id}`}
+                  href="/new/recommendations"
                   className="inline-flex items-center gap-2 rounded-full bg-card px-4 py-2.5 text-[13px] font-medium text-foreground ring-1 ring-border hover:bg-secondary"
                 >
                   <ArrowLeft className="size-3.5" aria-hidden />
                   Back
                 </Link>
-                <Link
-                  href={`/trips/${s.id}`}
-                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-primary px-4 py-2.5 text-[13.5px] font-medium text-primary-foreground hover:bg-[#0b2a25]"
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-full bg-secondary px-4 py-2.5 text-[13.5px] font-medium text-muted-foreground ring-1 ring-border"
                 >
                   <CheckCircle2 className="size-4" aria-hidden />
-                  Accept trip
-                </Link>
+                  Accept deferred
+                </button>
               </div>
               <p className="mt-3 text-[11.5px] text-muted-foreground">
-                Public trips can appear in Explore. You can change visibility anytime from the trip page.
+                Acceptance, visibility changes, invites, and participants are implemented in the later planner flow.
               </p>
             </div>
           </aside>
@@ -176,7 +184,7 @@ function DocCheckRow({
       : status === "warn"
         ? "bg-[color:var(--color-sunset-wash)]/40 text-[color:var(--color-warning)]"
         : "bg-[color:var(--color-error)]/15 text-[color:var(--color-error)]"
-  const label = status === "ok" ? "Valid" : status === "warn" ? "Needs review" : "Missing"
+  const label = status === "ok" ? "Preview" : status === "warn" ? "Deferred" : "Missing"
   return (
     <li className="flex items-start gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
       <span className={`grid size-8 shrink-0 place-items-center rounded-lg ${tone}`}>
@@ -213,7 +221,7 @@ function VisibilityOption({
           : "flex cursor-pointer items-start gap-3 rounded-xl bg-card p-3 ring-1 ring-border hover:ring-primary/40"
       }
     >
-      <input type="radio" name="visibility" defaultChecked={checked} className="sr-only" />
+      <input type="radio" name="visibility" defaultChecked={checked} className="sr-only" disabled />
       <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-card text-primary ring-1 ring-border">
         {icon}
       </span>
