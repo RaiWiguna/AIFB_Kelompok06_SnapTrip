@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import get_store, optional_user, require_user
 from app.core.ids import new_id
+from app.services.trip_detail import trip_detail_display
 
 router = APIRouter()
 
@@ -22,6 +23,26 @@ async def get_trip_plan(trip_plan_id: str, store=Depends(get_store), user=Depend
     if not can_read_trip(plan, user):
         raise HTTPException(status_code=403, detail="You cannot access this Trip Plan")
     return {"trip_plan": plan}
+
+
+@router.get("/{trip_plan_id}/detail")
+async def get_trip_plan_detail(
+    trip_plan_id: str,
+    store=Depends(get_store),
+    user=Depends(optional_user),
+):
+    plan = await store.find_one("tripPlans", id=trip_plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Trip Plan not found")
+    if not can_read_trip(plan, user):
+        raise HTTPException(status_code=403, detail="You cannot access this Trip Plan")
+    return {
+        "detail": await trip_detail_display(
+            store,
+            plan,
+            viewer_id=user["id"] if user else None,
+        )
+    }
 
 
 @router.post("/{trip_plan_id}/like")
