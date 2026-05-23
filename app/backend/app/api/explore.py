@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.deps import get_store, optional_user
 from app.core.categories import CATEGORY_IDS
+from app.services.display import trip_card_display
 
 router = APIRouter()
 
@@ -23,23 +24,5 @@ async def explore(
             continue
         if category and not set(category).intersection(set(plan.get("categories", []))):
             continue
-        likes = await store.list_docs("likes", trip_plan_id=plan["id"])
-        saves = await store.list_docs("collectionItems", trip_plan_id=plan["id"])
-        viewer_like = None
-        if user:
-            viewer_like = await store.find_one("likes", user_id=user["id"], trip_plan_id=plan["id"])
-        visible.append(
-            {
-                "id": plan["id"],
-                "title": plan["title"],
-                "owner_id": plan["owner_id"],
-                "categories": plan.get("categories", []),
-                "cover_image_id": plan.get("cover_image_id"),
-                "duration_days": plan.get("duration_days"),
-                "estimated_budget_idr": plan.get("estimated_budget_idr"),
-                "like_count": len(likes),
-                "save_count": len(saves),
-                "viewer": {"liked": bool(viewer_like)} if user else {"liked": False},
-            }
-        )
+        visible.append(await trip_card_display(store, plan, viewer_id=user["id"] if user else None))
     return {"items": visible[:limit], "next_cursor": None}

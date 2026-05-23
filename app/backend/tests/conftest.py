@@ -40,18 +40,23 @@ async def create_trip_plan(
     *,
     visibility: str = "public",
     categories: list[str] | None = None,
+    title: str = "Test Trip",
+    region: str = "Bali, Indonesia",
 ):
+    category_key = "_".join(categories or ["pantai"])
+    existing = await client.app.state.store.list_docs("tripPlans")
     return await client.app.state.store.save_doc(
         "tripPlans",
         {
-            "id": "trip_test_" + visibility + "_" + "_".join(categories or ["pantai"]),
+            "id": f"trip_test_{visibility}_{category_key}_{len(existing)}",
             "owner_id": owner_id,
-            "title": "Test Trip",
+            "title": title,
             "status": "accepted",
             "visibility": visibility,
             "categories": categories or ["pantai"],
             "duration_days": 3,
             "estimated_budget_idr": 1_500_000,
             "cover_image_id": None,
+            "region": region,
         },
     )
