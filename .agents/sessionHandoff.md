@@ -4,8 +4,8 @@
 | --- | --- |
 | Document status | Active handoff |
 | Last updated | 2026-05-23 |
-| Branch | `feat/planner-preview-boundary` |
-| Purpose | Resume point after planner preview boundary and integration cleanup |
+| Branch | `feat/integrated-product-journeys` |
+| Purpose | Resume point after integrated product journey validation |
 
 ## 1. Completed This Session
 
@@ -96,6 +96,13 @@
   - `docs/adr/0005-trip-creation-media-and-recommendation-handoff-boundary.md`,
   - `docs/adr/0006-trip-plan-detail-read-model-and-map-rendering-boundary.md`,
   - `docs/adr/0007-planner-preview-and-deferred-acceptance-boundary.md`.
+- Implemented integrated product journey validation:
+  - added test-only `POST /api/testing/reset-product-journeys`, registered only when `APP_ENV=test`, to reset memory-mode state and seed deterministic public Trip Plans across all four canonical categories plus a private control Trip Plan,
+  - extended trip card display state with viewer-specific `saved` status,
+  - added a compact card-level save-to-collection control that lists collections and supports inline collection creation before saving,
+  - expanded Playwright helpers and specs for auth, Explore/filter/like/save/collections, image upload/classification/category confirmation, recommendation selection, planner preview, public Trip Plan detail reads, and no-key static map fallback,
+  - configured Playwright E2E to run serially because the test-only reset endpoint mutates the shared memory-mode backend state,
+  - kept Gemini, Google Places, and Google Maps keys disabled for CI/local E2E.
 
 ## 2. Current Repo Facts
 
@@ -110,7 +117,8 @@
 - Agentic planner implementation is intentionally sequenced after Docker, remote compose, Caddy, and GitHub Actions deployment foundation.
 - Backend tests use `SNAPTRIP_STORAGE=memory` through test setup. Runtime defaults remain MongoDB-oriented.
 - Classifier local/test default is `CLASSIFIER_MODE=mock`; `real` mode intentionally requires a future trained artifact and implementation completion.
-- Root `npm run test` runs backend, frontend, and Playwright; Playwright now starts memory-mode backend and frontend dev servers for a planner preview smoke test and refuses to reuse stale local servers.
+- Root `npm run test` runs backend, frontend, and Playwright; Playwright now starts memory-mode backend and frontend dev servers for integrated product journeys and refuses to reuse stale local servers.
+- The test-only seeding API is available only under `APP_ENV=test` and should not be promoted to development or production routes.
 - Real Gemini planner chat, persisted `trip_memo.v1`, `full_itinerary.v1`, `budget_plan.v1`, Trip Plan acceptance, invites, and participants remain Phase 11 scope.
 - Static frontend image assets are display fallbacks only; they must not be sent to classifier source-image APIs.
 
@@ -195,6 +203,18 @@ Verification after planner final-review UI alignment:
 - Browser visual pass seeded a planner session through real memory-mode backend APIs and confirmed the final-review panel replaces chat on the same route.
 - Shut down temporary backend/frontend processes; no listeners remained on ports `3000` or `8000`.
 
+Verification after integrated product journey validation:
+
+- `npm run test:backend` passed: backend 33 passed / 1 skipped.
+- `npm run test:frontend` passed: frontend 2 test files / 13 tests.
+- `npm run typecheck` passed.
+- `npm run lint` passed; frontend reports the same 5 existing warnings and 0 errors.
+- `npm run test:e2e` passed: 5 Playwright tests covering auth, Explore/filter/like/save/collections, upload/classification/recommendations/planner preview, existing planner preview boundary, and public Trip Plan detail/static map fallback.
+- `npm run test` passed: backend 33 passed / 1 skipped, frontend 13 tests, Playwright 5 tests.
+- `npm run build` passed.
+- `npm run docker:config` passed for local compose and the current remote Mongo stub compose.
+- Frontend source scan found no `GOOGLE_PLACES_API_KEY` or `GEMINI_API_KEY` references.
+
 ## 4. Known Caveats
 
 - Mongo runtime integration is implemented at the store level, but the current automated tests use the in-memory store. Future Phase 6 work should add testcontainers MongoDB/GridFS coverage.
@@ -209,11 +229,12 @@ Verification after planner final-review UI alignment:
 - No real secrets should be added to `.env.local`, `.env.local.example`, or deployment env examples.
 - ADRs under `docs/adr/` capture durable implementation caveats and follow-up hardening work without tying those decisions to roadmap phase labels.
 - Frontend npm audit is clean after the Next canary pin; revisit when a stable Next release includes the same fixes.
+- Integrated E2E uses the in-memory backend and a test-only reset/seed route; it validates frontend/backend contracts without exercising MongoDB persistence or real provider calls.
 
 ## 5. Recommended Next Start
 
-Continue from `.agents/implementationPhase.md` and `.agents/integrationPhases.md`:
+Continue from `.agents/implementationPhase.md`:
 
-1. Expand integrated Playwright coverage beyond the planner smoke path to Explore/filter/like/save, upload/classification, recommendation selection, trip detail reads, and static map fallback.
-2. Keep Google Places and Gemini secrets backend-only, and do not implement Phase 11 planner acceptance, invites, participants, or persisted structured documents until after deployment foundation.
-3. After broader integrated E2E coverage passes, proceed to Docker, remote compose, Caddy, GitHub Actions, and rollback work.
+1. Start Docker, remote compose, Caddy, GitHub Actions, and rollback work.
+2. Keep Google Places and Gemini secrets backend-only, and keep CI/CD path filters excluding `.agents/**`, `docs/**`, and `training/**`-only changes.
+3. Do not implement real planner acceptance, invites, participants, or persisted structured documents until after deployment foundation is complete.
