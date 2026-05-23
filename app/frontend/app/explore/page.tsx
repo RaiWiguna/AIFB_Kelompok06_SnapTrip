@@ -1,6 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { Bookmark, ChevronDown, ChevronUp, Compass, Lock, Plus, SlidersHorizontal, Sparkles, Star, X } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
@@ -10,8 +11,8 @@ import { TripCard } from "@/components/trip-card"
 import { CategoryIcon } from "@/components/category-icon"
 import { IMG } from "@/lib/data"
 import { CATEGORIES, CATEGORY_LABEL, type CategoryId } from "@/lib/categories"
-import { getCurrentUser } from "@/lib/api/auth"
-import { ApiError } from "@/lib/api/client"
+import { markAuthedNext } from "@/lib/auth-context"
+import { getOptionalAppHeaderUser } from "@/lib/server-auth"
 import { getExploreTrips } from "@/lib/api/explore"
 
 export default async function ExplorePage({
@@ -22,14 +23,11 @@ export default async function ExplorePage({
   const { as, category } = await searchParams
   const requestedAuthed = as === "user"
   const selectedCategory = category && CATEGORIES.some((item) => item.id === category) ? category : "pantai"
-  const cookieHeader = requestedAuthed ? (await cookies()).toString() : undefined
-  let currentUser: Awaited<ReturnType<typeof getCurrentUser>> | undefined
-  if (cookieHeader) {
-    try {
-      currentUser = await getCurrentUser(cookieHeader)
-    } catch (error) {
-      if (!(error instanceof ApiError && error.status === 401)) throw error
-    }
+  const cookieHeader = (await cookies()).toString()
+  const currentUser = await getOptionalAppHeaderUser(cookieHeader)
+  if (currentUser && !requestedAuthed) {
+    const target = category ? `/explore?category=${selectedCategory}` : "/explore"
+    redirect(markAuthedNext(target))
   }
   const isAuthed = Boolean(currentUser)
   const filtered = await getExploreTrips({ categories: [selectedCategory], cookieHeader: isAuthed ? cookieHeader : undefined })
@@ -52,7 +50,7 @@ export default async function ExplorePage({
       {currentUser ? (
         <AppHeader
           active="explore"
-          user={{ name: currentUser.displayName, email: currentUser.email, initials: currentUser.initials }}
+          user={currentUser}
         />
       ) : (
         <SiteHeader active="explore" />

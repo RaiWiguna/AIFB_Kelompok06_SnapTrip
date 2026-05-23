@@ -388,8 +388,8 @@ export const PLAN_DRAFT = {
 
 export const CURRENT_USER = {
   id: "u_self",
-  displayName: "Lintang Pertiwi",
-  email: "lintang@snaptrip.site",
+  displayName: "Demo Traveler",
+  email: "demo@snaptrip.site",
   avatar: AVATARS.you,
   joinedAt: "Joined Apr 2026",
   bio: "Planning quiet weeks across Java, Bali, and Flores.",
@@ -711,12 +711,12 @@ export const PLAN_SESSION = {
 export type InviteState = "valid" | "invalid" | "expired" | "revoked" | "joined" | "auth_required"
 
 export const INVITES: Record<string, { tripId: string; state: InviteState; ownerName: string }> = {
-  "bali-aug-2026": { tripId: "bali-nusa-penida-aug", state: "valid", ownerName: "Lintang Pertiwi" },
-  expired: { tripId: "bali-nusa-penida-aug", state: "expired", ownerName: "Lintang Pertiwi" },
-  revoked: { tripId: "bali-nusa-penida-aug", state: "revoked", ownerName: "Lintang Pertiwi" },
-  joined: { tripId: "bali-nusa-penida-aug", state: "joined", ownerName: "Lintang Pertiwi" },
+  "bali-aug-2026": { tripId: "bali-nusa-penida-aug", state: "valid", ownerName: "Demo Traveler" },
+  expired: { tripId: "bali-nusa-penida-aug", state: "expired", ownerName: "Demo Traveler" },
+  revoked: { tripId: "bali-nusa-penida-aug", state: "revoked", ownerName: "Demo Traveler" },
+  joined: { tripId: "bali-nusa-penida-aug", state: "joined", ownerName: "Demo Traveler" },
   invalid: { tripId: "", state: "invalid", ownerName: "" },
-  auth: { tripId: "bali-nusa-penida-aug", state: "auth_required", ownerName: "Lintang Pertiwi" },
+  auth: { tripId: "bali-nusa-penida-aug", state: "auth_required", ownerName: "Demo Traveler" },
 }
 
 /* -------- Helpers used by the new pages -------- */
@@ -812,7 +812,7 @@ export function getInvite(token: string): InvitePreview | null {
     tripId: raw.tripId || "bali-nusa-penida-aug",
     tripTitle: trip?.title ?? "Bali & Nusa Penida",
     cover: trip?.cover ?? IMG.diamondBeach,
-    inviterName: raw.ownerName || "Lintang Pertiwi",
+    inviterName: raw.ownerName || "Demo Traveler",
     role: token === "expired" || token === "revoked" ? "viewer" : "editor",
     participants: trip?.participants ?? 2,
     days: trip?.days ?? 6,

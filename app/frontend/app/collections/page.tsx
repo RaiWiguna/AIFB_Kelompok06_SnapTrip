@@ -3,7 +3,7 @@ import Link from "next/link"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { ArrowRight, Bookmark, Layers, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react"
-import { AppHeader } from "@/components/app-header"
+import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { AppFooter } from "@/components/app-footer"
 import { CategoryIcon } from "@/components/category-icon"
 import { ApiError } from "@/lib/api/client"
@@ -35,7 +35,7 @@ export default async function CollectionsPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <AppHeader active="collections" />
+      <AuthenticatedAppHeader active="collections" next="/collections" action="collections" />
       <main className="mx-auto w-full max-w-[1480px] flex-1 px-6 pb-24 pt-6 md:px-10">
         <div className="mb-12 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="max-w-2xl">
@@ -79,7 +79,7 @@ export default async function CollectionsPage() {
               </p>
               <div className="mt-5 flex items-center justify-center gap-2">
                 <Link
-                  href="/explore"
+                  href="/explore?as=user"
                   className="inline-flex items-center gap-2 rounded-full bg-card px-5 py-2.5 text-[13px] font-medium text-foreground ring-1 ring-border hover:bg-secondary"
                 >
                   Open Explore
@@ -165,7 +165,7 @@ export default async function CollectionsPage() {
             return (
               <Link
                 key={c.id}
-                href={`/explore?category=${c.id}`}
+                href={`/explore?category=${c.id}&as=user`}
                 className="group relative block overflow-hidden rounded-3xl ring-1 ring-black/5"
               >
                 <div className="relative aspect-[4/5] w-full">
@@ -211,7 +211,7 @@ export default async function CollectionsPage() {
                 Curated by SnapTrip
               </h2>
             </div>
-            <Link href="/explore" className="inline-flex items-center gap-1 text-[13.5px] font-medium text-primary">
+            <Link href="/explore?as=user" className="inline-flex items-center gap-1 text-[13.5px] font-medium text-primary">
               View all <ArrowRight className="size-3.5" aria-hidden />
             </Link>
           </div>

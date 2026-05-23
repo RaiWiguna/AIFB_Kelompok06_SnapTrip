@@ -1,11 +1,13 @@
 import Image from "next/image"
 import Link from "next/link"
+import { cookies } from "next/headers"
 import { ArrowRight, Compass, Layers, Lock, Sparkles } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
 import { IMG } from "@/lib/data"
+import { getOptionalAppHeaderUser } from "@/lib/server-auth"
 
 export default async function AboutPage({
   searchParams,
@@ -13,13 +15,14 @@ export default async function AboutPage({
   searchParams: Promise<{ as?: string }>
 }) {
   const { as } = await searchParams
-  const isAuthed = as === "user"
+  const headerUser = as === "user" ? await getOptionalAppHeaderUser((await cookies()).toString()) : undefined
+  const isAuthed = Boolean(headerUser)
   const planHref = isAuthed ? "/new" : "/signin?next=%2Fnew&action=plan"
   const exploreHref = isAuthed ? "/explore?as=user" : "/explore"
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      {isAuthed ? <AppHeader /> : <SiteHeader active="about" />}
+      {headerUser ? <AppHeader user={headerUser} /> : <SiteHeader active="about" />}
       <main className="mx-auto w-full max-w-[1480px] flex-1 px-6 pb-24 pt-6 md:px-10">
         <section className="grid grid-cols-1 items-center gap-10 lg:grid-cols-2">
           <div>

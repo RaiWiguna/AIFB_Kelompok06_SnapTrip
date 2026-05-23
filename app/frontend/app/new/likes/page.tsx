@@ -3,7 +3,7 @@ import Link from "next/link"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { ArrowLeft, Heart } from "lucide-react"
-import { AppHeader } from "@/components/app-header"
+import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { AppFooter } from "@/components/app-footer"
 import { SourceImagesContinueButton } from "@/components/source-images-continue-button"
 import { StepIndicator, NEW_TRIP_STEPS } from "@/components/step-indicator"
@@ -25,7 +25,7 @@ export default async function NewFromLikesPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <AppHeader active="new" />
+      <AuthenticatedAppHeader active="new" next="/new/likes" action="plan" />
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 pb-20 pt-6 md:px-10">
         <div className="mb-2 flex items-center gap-2 text-[12px] text-muted-foreground">
           <Link href="/" className="hover:text-primary">
@@ -61,7 +61,7 @@ export default async function NewFromLikesPage() {
                 Browse Explore and like a few trips to seed this flow.
               </p>
               <Link
-                href="/explore"
+                href="/explore?as=user"
                 className="mt-4 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-[13px] font-medium text-primary-foreground hover:bg-[#0b2a25]"
               >
                 Open Explore

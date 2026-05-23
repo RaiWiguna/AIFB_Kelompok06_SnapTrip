@@ -15,14 +15,20 @@ import {
   Sparkles,
   Target,
 } from "lucide-react"
-import { AppHeader } from "@/components/app-header"
+import { AppHeader, type AppHeaderUser } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { StepIndicator, NEW_TRIP_STEPS } from "@/components/step-indicator"
 import { IMG } from "@/lib/data"
 import { generateRecommendations, selectRecommendations } from "@/lib/api/recommendations"
 import type { RecommendationCardDisplay, TripCreationSessionDisplay } from "@/lib/api/types"
 
-export function RecommendationsStepClient({ initialSession }: { initialSession: TripCreationSessionDisplay }) {
+export function RecommendationsStepClient({
+  initialSession,
+  headerUser,
+}: {
+  initialSession: TripCreationSessionDisplay
+  headerUser: AppHeaderUser
+}) {
   const router = useRouter()
   const [items, setItems] = useState<RecommendationCardDisplay[]>(initialSession.recommendations?.items || [])
   const [selectedIds, setSelectedIds] = useState<string[]>(initialSession.selectedRecommendationIds)
@@ -86,7 +92,7 @@ export function RecommendationsStepClient({ initialSession }: { initialSession: 
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/60 to-background" />
       </div>
 
-      <AppHeader active="new" />
+      <AppHeader active="new" user={headerUser} />
 
       <main className="mx-auto w-full max-w-[1480px] flex-1 px-6 pb-24 pt-6 md:px-10">
         <div className="mb-2 flex items-center gap-2 text-[12px] text-muted-foreground">

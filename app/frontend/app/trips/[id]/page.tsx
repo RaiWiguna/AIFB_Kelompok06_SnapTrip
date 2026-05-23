@@ -26,14 +26,17 @@ import {
   Utensils,
   Wallet,
 } from "lucide-react"
-import { AppFooter } from "@/components/app-footer"
 import { AppHeader } from "@/components/app-header"
+import { AppFooter } from "@/components/app-footer"
+import { SiteHeader } from "@/components/site-header"
+import { SiteFooter } from "@/components/site-footer"
 import { TripDayRow } from "@/components/trip-day-row"
 import { TripOwnerControls } from "@/components/trip-owner-controls"
 import { TripParticipants } from "@/components/trip-participants"
 import { TripRouteMap } from "@/components/trip-route-map"
 import { ApiError } from "@/lib/api/client"
 import { getTripPlanDetail } from "@/lib/api/trip-plans"
+import { getOptionalAppHeaderUser } from "@/lib/server-auth"
 
 export default async function TripDetailPage({
   params,
@@ -54,15 +57,17 @@ export default async function TripDetailPage({
     if (error instanceof ApiError && error.status === 403) redirect("/forbidden")
     throw error
   }
+  const headerUser = await getOptionalAppHeaderUser(cookieHeader)
   const t = trip.summary
   const detail = trip.detail
   const detailFull = trip.detail
+  const exploreHref = headerUser ? "/explore?as=user" : "/explore"
 
   const galleryThumbs = detail.galleryThumbs.slice(0, 6)
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <AppHeader active="trips" />
+      {headerUser ? <AppHeader active="trips" user={headerUser} /> : <SiteHeader active="explore" />}
 
       <main className="mx-auto w-full max-w-[1480px] flex-1 px-6 pt-6 pb-10 md:px-10">
         {/* ---------------- Hero (top viewport) ---------------- */}
@@ -70,11 +75,11 @@ export default async function TripDetailPage({
           {/* Left: title + meta */}
           <div className="flex flex-col">
             <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-[13px] text-muted-foreground">
-              <Link href="/explore?as=user" className="hover:text-foreground">
+              <Link href={exploreHref} className="hover:text-foreground">
                 Explore
               </Link>
               <ChevronRight className="size-3.5" aria-hidden />
-              <Link href="/explore?as=user" className="hover:text-foreground">
+              <Link href={exploreHref} className="hover:text-foreground">
                 Public Trips
               </Link>
               <ChevronRight className="size-3.5" aria-hidden />
@@ -444,7 +449,7 @@ export default async function TripDetailPage({
         </section>
       </main>
 
-      <AppFooter />
+      {headerUser ? <AppFooter /> : <SiteFooter />}
     </div>
   )
 }

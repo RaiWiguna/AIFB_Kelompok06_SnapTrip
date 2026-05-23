@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useRef, useState } from "react"
 import { ArrowLeft, ArrowRight, ImageIcon, Trash2, Upload } from "lucide-react"
-import { AppHeader } from "@/components/app-header"
+import { AppHeader, type AppHeaderUser } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { StepIndicator, NEW_TRIP_STEPS } from "@/components/step-indicator"
 import { ApiError } from "@/lib/api/client"
@@ -16,7 +16,13 @@ const MAX_IMAGES = 8
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
 const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png"])
 
-export function UploadStepClient({ initialSession }: { initialSession?: TripCreationSessionDisplay | null }) {
+export function UploadStepClient({
+  initialSession,
+  headerUser,
+}: {
+  initialSession?: TripCreationSessionDisplay | null
+  headerUser: AppHeaderUser
+}) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
   const [sessionId, setSessionId] = useState(initialSession?.id || "")
@@ -69,7 +75,7 @@ export function UploadStepClient({ initialSession }: { initialSession?: TripCrea
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <AppHeader active="new" />
+      <AppHeader active="new" user={headerUser} />
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 pb-20 pt-6 md:px-10">
         <div className="mb-2 flex items-center gap-2 text-[12px] text-muted-foreground">
           <Link href="/" className="hover:text-primary">

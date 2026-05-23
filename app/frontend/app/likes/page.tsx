@@ -2,7 +2,7 @@ import Link from "next/link"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { Heart } from "lucide-react"
-import { AppHeader } from "@/components/app-header"
+import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { AppFooter } from "@/components/app-footer"
 import { TripCard } from "@/components/trip-card"
 import { ApiError } from "@/lib/api/client"
@@ -22,7 +22,7 @@ export default async function LikedTripsPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <AppHeader />
+      <AuthenticatedAppHeader next="/likes" action="like" />
       <main className="mx-auto w-full max-w-[1480px] flex-1 px-6 py-10 md:px-10">
         <div className="mb-2 flex items-center gap-2 text-[12px] text-muted-foreground">
           <Link href="/" className="hover:text-primary">
@@ -58,7 +58,7 @@ export default async function LikedTripsPage() {
               Browse Explore and tap the heart on plans you find inspiring.
             </p>
             <Link
-              href="/explore"
+              href="/explore?as=user"
               className="mt-5 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-[13px] font-medium text-primary-foreground hover:bg-[#0b2a25]"
             >
               Open Explore

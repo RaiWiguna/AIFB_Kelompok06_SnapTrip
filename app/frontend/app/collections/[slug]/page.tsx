@@ -3,7 +3,7 @@ import Link from "next/link"
 import { cookies } from "next/headers"
 import { notFound, redirect } from "next/navigation"
 import { ArrowRight, Bookmark, CheckCircle2, Compass, MapPin, Share2, Sparkles, X } from "lucide-react"
-import { AppHeader } from "@/components/app-header"
+import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { AppFooter } from "@/components/app-footer"
 import { SourceImagesContinueButton } from "@/components/source-images-continue-button"
 import { TripCard } from "@/components/trip-card"
@@ -41,7 +41,7 @@ export default async function CollectionDetailPage({
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <AppHeader active="collections" />
+      <AuthenticatedAppHeader active="collections" next={`/collections/${slug}`} action="collections" />
 
       <main className="flex-1">
         <section className="relative">
@@ -143,7 +143,7 @@ export default async function CollectionDetailPage({
               </h2>
             </div>
             <Link
-              href="/explore"
+              href="/explore?as=user"
               className="hidden items-center gap-1 text-[13px] font-medium text-primary hover:underline md:inline-flex"
             >
               Browse all trips <ArrowRight className="size-3.5" aria-hidden />

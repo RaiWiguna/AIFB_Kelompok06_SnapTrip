@@ -4,6 +4,7 @@ import { SnapTripMark } from "./snaptrip-logo"
 import { cn } from "@/lib/utils"
 
 export type AppHeaderActive = "explore" | "new" | "collections" | "trips" | "plan" | "account"
+export type AppHeaderUser = { name: string; email: string; initials: string }
 
 /**
  * Authenticated workspace header.
@@ -15,10 +16,10 @@ export type AppHeaderActive = "explore" | "new" | "collections" | "trips" | "pla
  */
 export function AppHeader({
   active,
-  user = { name: "Lintang Pertiwi", email: "lintang@snaptrip.id", initials: "LP" },
+  user,
 }: {
   active?: AppHeaderActive
-  user?: { name: string; email: string; initials: string }
+  user: AppHeaderUser
 }) {
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
