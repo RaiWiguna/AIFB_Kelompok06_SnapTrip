@@ -12,9 +12,11 @@ from app.api import (
     planner_preview,
     recommendations,
     seeds,
+    testing,
     trip_creation,
     trip_plans,
 )
+from app.core.config import get_settings
 
 api_router = APIRouter()
 api_router.include_router(health.router)
@@ -30,3 +32,5 @@ api_router.include_router(planner_preview.router, prefix="/planner-preview", tag
 api_router.include_router(images.router, prefix="/images", tags=["images"])
 api_router.include_router(seeds.router, prefix="/destination-seeds", tags=["destination-seeds"])
 api_router.include_router(recommendations.router, tags=["recommendations"])
+if get_settings().app_env == "test":
+    api_router.include_router(testing.router, prefix="/testing", tags=["testing"])
