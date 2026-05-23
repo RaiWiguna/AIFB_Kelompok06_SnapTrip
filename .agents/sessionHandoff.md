@@ -5,7 +5,7 @@
 | Document status | Active handoff |
 | Last updated | 2026-05-23 |
 | Branch | `feat/integrated-product-journeys` |
-| Purpose | Resume point after integrated product journey validation |
+| Purpose | Resume point after Phase 10 deployment foundation |
 
 ## 1. Completed This Session
 
@@ -105,6 +105,15 @@
   - kept Gemini, Google Places, and Google Maps keys disabled for CI/local E2E.
 - Added ADR coverage for the integrated journey validation boundary:
   - `docs/adr/0008-integrated-product-journey-validation-boundary.md`.
+- Implemented Phase 10 deployment foundation:
+  - added backend and frontend Dockerfiles,
+  - expanded local Compose to Mongo/API/web,
+  - replaced the remote Mongo stub with Caddy/Mongo/API/web production Compose,
+  - added Caddy, production runtime env example, VM bootstrap, preflight, deploy, rollback, smoke, and readiness scripts,
+  - added root `bootstrapscripts.sh` as a bootstrap alias,
+  - added GitHub Actions CI and production deploy workflows with deploy concurrency, required secret validation, atomic runtime env upload, post-deploy smoke/readiness checks, and rollback on failed validation,
+  - added `.agents/deploymentGuide.md`,
+  - added `docs/adr/0009-single-vm-deployment-and-rollback-boundary.md`.
 
 ## 2. Current Repo Facts
 
@@ -123,6 +132,8 @@
 - The test-only seeding API is available only under `APP_ENV=test` and should not be promoted to development or production routes.
 - Real Gemini planner chat, persisted `trip_memo.v1`, `full_itinerary.v1`, `budget_plan.v1`, Trip Plan acceptance, invites, and participants remain Phase 11 scope.
 - Static frontend image assets are display fallbacks only; they must not be sent to classifier source-image APIs.
+- Phase 10 production deploy uses `snaptrip.site`, `api.snaptrip.site`, `/opt/snaptrip/hosted`, GitHub Actions, source-archive releases, Docker Compose, and Caddy.
+- Production deploy requires real Gemini and Google Places secrets before first deploy. `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY` is the only frontend-exposed provider key.
 
 ## 3. Verification Run
 
@@ -134,7 +145,7 @@ Verification performed on `feat/snaptrip-foundation`:
 - `npm run typecheck` passed.
 - `npm run test` passed.
 - `npm run build` passed.
-- `npm run docker:config` passed for local compose and the current remote Mongo stub compose.
+- `npm run docker:config` passed for local compose and the then-current remote Mongo stub compose.
 
 Additional verification after recommendation implementation:
 
@@ -214,14 +225,28 @@ Verification after integrated product journey validation:
 - `npm run test:e2e` passed: 5 Playwright tests covering auth, Explore/filter/like/save/collections, upload/classification/recommendations/planner preview, existing planner preview boundary, and public Trip Plan detail/static map fallback.
 - `npm run test` passed: backend 33 passed / 1 skipped, frontend 13 tests, Playwright 5 tests.
 - `npm run build` passed.
-- `npm run docker:config` passed for local compose and the current remote Mongo stub compose.
+- `npm run docker:config` passed for local compose and the then-current remote Mongo stub compose.
 - Frontend source scan found no `GOOGLE_PLACES_API_KEY` or `GEMINI_API_KEY` references.
+
+Verification after Phase 10 deployment foundation:
+
+- Cleaned generated Next build side effects before implementation.
+- `bash -n bootstrapscripts.sh deploy/scripts/*.sh` passed through Git Bash.
+- `shellcheck bootstrapscripts.sh deploy/scripts/*.sh` could not run because `shellcheck` is not installed in this local environment.
+- `git diff --check` passed.
+- `docker compose --env-file deploy/env/runtime.production.env.example -f deploy/compose/docker-compose.remote.yml config` passed.
+- `npm run docker:config` passed for local Compose and remote production Compose with `deploy/env/runtime.production.env.example`.
+- `npm run lint` passed; frontend reports the same 5 existing warnings and 0 errors.
+- `npm run typecheck` passed.
+- `npm test` passed: backend 33 passed / 1 skipped, frontend 13 tests, Playwright 5 tests.
+- `npm run build` passed.
+- `docker compose build` and `docker compose --env-file deploy/env/runtime.production.env.example -f deploy/compose/docker-compose.remote.yml build` could not run because Docker Desktop was not running on the local machine.
+- Race-safety review confirmed GitHub Actions deploy concurrency, remote `flock` in deploy/rollback, atomic runtime env upload, atomic `current`/`current_release` promotion after service health plus public smoke/readiness checks, previous-release preservation during cleanup, and shared MongoDB/GridFS/Caddy data preservation.
 
 ## 4. Known Caveats
 
 - Mongo runtime integration is implemented at the store level, but the current automated tests use the in-memory store. Future Phase 6 work should add testcontainers MongoDB/GridFS coverage.
 - Mongo image binary writes now use Motor GridFS bucket APIs. Initial testcontainers coverage exists, but it skipped locally because Docker Desktop was not running.
-- The remote compose file is intentionally a minimal valid Mongo stub so `npm run docker:config` passes during Phase 1-4. Phase 10 must replace it with full Caddy/API/web/Mongo production topology.
 - The real MobileNetV2 classifier path is a boundary placeholder; mock mode is the supported local/test default until a trained `.pt` artifact is promoted.
 - Google Places and Gemini provider calls are disabled by default in local/test env. Tests use mocked or deterministic provider behavior.
 - Some frontend routes and components still use mock data modules by design for static marketing imagery, landing-page examples, invite demo boundaries, and explicit Phase 11 placeholders.
@@ -233,11 +258,12 @@ Verification after integrated product journey validation:
 - `docs/adr/0008-integrated-product-journey-validation-boundary.md` freezes the test-only seed route and serial memory-mode E2E validation boundary.
 - Frontend npm audit is clean after the Next canary pin; revisit when a stable Next release includes the same fixes.
 - Integrated E2E uses the in-memory backend and a test-only reset/seed route; it validates frontend/backend contracts without exercising MongoDB persistence or real provider calls.
+- First production deploy still needs VM bootstrap, DNS, GitHub Secrets, and a real GitHub Actions run against the target VM.
 
 ## 5. Recommended Next Start
 
 Continue from `.agents/implementationPhase.md`:
 
-1. Start Docker, remote compose, Caddy, GitHub Actions, and rollback work.
-2. Keep Google Places and Gemini secrets backend-only, and keep CI/CD path filters excluding `.agents/**`, `docs/**`, and `training/**`-only changes.
-3. Do not implement real planner acceptance, invites, participants, or persisted structured documents until after deployment foundation is complete.
+1. Set up production VM, DNS, and GitHub Secrets using `.agents/deploymentGuide.md`, then run the first GitHub Actions deploy.
+2. Start Phase 11 planner documents, acceptance, invites, participants, and planner UI after the deployment foundation is confirmed.
+3. Keep Google Places and Gemini secrets backend-only, and keep real planner acceptance/persistence out of any deployment-only hotfixes.

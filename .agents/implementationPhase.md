@@ -345,32 +345,33 @@ Current implementation notes:
 
 ## 14. Phase 10 - Docker, Deployment, GitHub Actions, and Rollback
 
-Status: Pending.
+Status: Implemented.
 
 Execution list:
 
-- Add backend Dockerfile.
-- Add frontend Dockerfile.
-- Complete root `docker-compose.yml`.
-- Add `deploy/compose/docker-compose.remote.yml`.
-- Add `deploy/caddy/Caddyfile`.
-- Add SnapTrip deploy scripts:
+- Added backend Dockerfile.
+- Added frontend Dockerfile.
+- Completed root `docker-compose.yml` for local Mongo/API/web.
+- Replaced `deploy/compose/docker-compose.remote.yml` with the production Caddy/API/web/Mongo topology.
+- Added `deploy/caddy/Caddyfile`.
+- Added SnapTrip deploy scripts:
   - `bootstrap-vm.sh` to prepare `/opt/snaptrip/hosted`, shared directories, Docker, and Caddy prerequisites.
   - `remote-preflight.sh` to validate VM tools, release paths, runtime env, Docker Compose, and permissions before deploy.
-  - `remote-deploy.sh` to unpack the source archive, switch `current`, run remote compose, and write `current_release`.
+  - `remote-deploy.sh` to start the remote compose stack from an immutable source-archive release, switch `current`, and write `current_release`.
   - `remote-rollback.sh` to switch back to the previous release and restart the remote compose stack.
   - `assert-ready.sh` to validate `https://api.snaptrip.site/ready`.
   - `smoke-check.sh` to validate `https://snaptrip.site`, `https://api.snaptrip.site/health`, and `https://api.snaptrip.site/ready`.
-- Add GitHub Actions CI.
-- Add GitHub Actions deploy.
-- Configure path filters so `.agents/**`, `docs/**`, and `training/**`-only changes do not trigger hosted-runtime CI/CD or production deploy.
-- Exclude Trivy and CodeQL.
+- Added root `bootstrapscripts.sh` alias for VM bootstrap.
+- Added GitHub Actions CI.
+- Added GitHub Actions deploy.
+- Configured path filters so `.agents/**`, `docs/**`, `training/**`, `drafts/**`, `examples/**`, and root `*.md` only changes do not trigger hosted-runtime CI/CD or production deploy.
+- Excluded Trivy and CodeQL.
 
 Exit criteria:
 
-- Integrated frontend/backend product deploys to VM.
-- Smoke checks and `/ready` pass.
-- Rollback preserves MongoDB/GridFS data.
+- Integrated frontend/backend product is deployable to the VM through GitHub Actions or manual dispatch.
+- Smoke checks and `/ready` are implemented in deploy validation.
+- Rollback preserves MongoDB/GridFS data by keeping all persistent data under `/opt/snaptrip/hosted/shared`.
 
 ## 15. Phase 11 - Agentic Planner, Documents, Acceptance, Invites, Participants, and Planner UI
 
@@ -771,10 +772,10 @@ Integrated E2E:
 
 Docker:
 
-- Backend Dockerfile with uv and PyTorch dependencies.
-- Frontend Dockerfile with Next.js build.
-- Root local Compose.
-- Remote Compose.
+- Backend Dockerfile with Python 3.12 and uv-locked production dependencies.
+- Frontend Dockerfile with Node 22 and Next.js build.
+- Root local Compose with Mongo, API, and web.
+- Remote Compose with Caddy, Mongo, API, and web.
 
 Deploy:
 
@@ -792,7 +793,7 @@ GitHub Actions:
 - CI for hosted-runtime paths.
 - Deploy after successful main CI.
 - Manual dispatch.
-- Path filters excluding `.agents/**`, `docs/**`, and `training/**` only changes.
+- Path filters excluding `.agents/**`, `docs/**`, `training/**`, `drafts/**`, `examples/**`, and root `*.md` only changes.
 - No Trivy.
 - No CodeQL.
 

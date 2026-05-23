@@ -14,5 +14,78 @@ services:
       retries: 5
       start_period: 20s
 
+  api:
+    build:
+      context: .
+      dockerfile: app/backend/Dockerfile
+    container_name: snaptrip-local-api
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      APP_NAME: SnapTrip API
+      APP_ENV: development
+      API_BASE_URL: http://localhost:8000
+      WEB_BASE_URL: http://localhost:3000
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      SESSION_SECRET: local-dev-session-secret-not-for-production
+      COOKIE_SECURE: "false"
+      SNAPTRIP_STORAGE: mongo
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DATABASE: snaptrip
+      GRIDFS_BUCKET: snaptrip_images
+      CLASSIFIER_MODE: mock
+      CLASSIFIER_MODEL_VERSION: 2026-05-mvp
+      USE_GEMINI: "false"
+      USE_GOOGLE_PLACES: "false"
+      GEMINI_API_KEY: ""
+      GOOGLE_PLACES_API_KEY: ""
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import json,urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=5); body=json.load(r); raise SystemExit(0 if body.get('ready') is True else 1)"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      dockerfile: app/frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+        NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY: ""
+    container_name: snaptrip-local-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY: ""
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
 volumes:
   snaptrip_mongo_data:

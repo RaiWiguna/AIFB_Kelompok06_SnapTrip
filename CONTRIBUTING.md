@@ -145,7 +145,7 @@ Expected script shape:
     "build:frontend": "npm run build --prefix app/frontend",
     "build:backend": "cd app/backend && uv run python -m compileall app",
     "build": "npm run build:backend && npm run build:frontend",
-    "docker:config": "docker compose config && docker compose -f deploy/compose/docker-compose.remote.yml config"
+    "docker:config": "docker compose config && docker compose --env-file deploy/env/runtime.production.env.example -f deploy/compose/docker-compose.remote.yml config"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"

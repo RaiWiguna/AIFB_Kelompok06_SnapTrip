@@ -103,18 +103,20 @@ The root `package.json` is implemented and should remain the standard command su
 
 ## Local Development Status
 
-Phase 1-4 foundation runtime is implemented on `feat/snaptrip-foundation`.
+The integrated product runtime and Phase 10 deployment foundation are implemented.
 
 Implemented foundations:
 
 - Root npm scripts for install, dev, test, typecheck, lint, build, and Docker config.
-- FastAPI backend with health/readiness, auth, Explore, likes, collections, trip creation sessions, image upload metadata, mock classifier flow, category confirmation, and destination seeds.
-- Next.js frontend placeholder with TypeScript and Vitest baseline.
-- Local MongoDB compose and a minimal remote compose placeholder.
+- FastAPI backend with health/readiness, auth, Explore, likes, collections, trip creation sessions, image upload/GridFS, mock classifier flow, category confirmation, recommendations, planner preview, and trip detail reads.
+- Next.js frontend integrated with backend APIs for the pre-planner MVP flows.
+- Local Docker Compose for MongoDB, API, and web.
+- Remote Docker Compose for Caddy, MongoDB, API, and web.
+- GitHub Actions CI and production deploy workflows.
 
 Copy `.env.local.example`, `app/backend/.env.local.example`, and `app/frontend/.env.local.example` to local `.env.local` files for development values. Real `.env.local` files are ignored.
 
-Recommended next start is Phase 5 from `.agents/implementationPhase.md`: Google Places enrichment, Gemini structured recommendations, recommendation persistence, and provider-mocked tests.
+Recommended next start is Phase 11 from `.agents/implementationPhase.md`: agentic planner documents, acceptance, invites, participants, and planner UI.
 
 ## Deployment Targets
 
@@ -126,11 +128,15 @@ Production deployment uses:
 - `deploy/compose/docker-compose.remote.yml`
 - `deploy/caddy/Caddyfile`
 - `deploy/scripts/*`
+- `.github/workflows/ci.yml`
+- `.github/workflows/deploy-production.yml`
 - `/opt/snaptrip/hosted/releases/<sha>`
 - `/opt/snaptrip/hosted/current`
 - `/opt/snaptrip/hosted/shared`
 
 Root `docker-compose.yml` is local development only.
+
+See `.agents/deploymentGuide.md` for VM bootstrap, GitHub Secrets, deploy, and rollback instructions.
 
 ## Contributing
 

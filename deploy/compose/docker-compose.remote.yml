@@ -1,13 +1,123 @@
 services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    environment:
+      CADDY_EMAIL: ${CADDY_EMAIL}
+      WEB_DOMAIN: ${WEB_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${SHARED_DIR:-/opt/snaptrip/hosted/shared}/caddy-data:/data
+      - ${SHARED_DIR:-/opt/snaptrip/hosted/shared}/caddy-config:/config
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
+
   mongo:
     image: mongo:7
     restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE}
     volumes:
-      - /opt/snaptrip/hosted/shared/mongo-data:/data/db
+      - ${SHARED_DIR:-/opt/snaptrip/hosted/shared}/mongo-data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh --quiet \"mongodb://$${MONGO_INITDB_ROOT_USERNAME}:$${MONGO_INITDB_ROOT_PASSWORD}@127.0.0.1:27017/admin\" --eval \"db.adminCommand('ping').ok\""
+        ]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
       start_period: 20s
+
+  api:
+    build:
+      context: ../..
+      dockerfile: app/backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      APP_NAME: SnapTrip API
+      APP_ENV: production
+      API_BASE_URL: https://${API_DOMAIN}
+      WEB_BASE_URL: https://${WEB_DOMAIN}
+      CORS_ORIGINS: https://${WEB_DOMAIN}
+      SESSION_SECRET: ${SESSION_SECRET}
+      COOKIE_SECURE: "true"
+      SNAPTRIP_STORAGE: mongo
+      MONGODB_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DATABASE}?authSource=admin
+      MONGODB_DATABASE: ${MONGO_DATABASE}
+      GRIDFS_BUCKET: ${GRIDFS_BUCKET}
+      CLASSIFIER_MODE: ${CLASSIFIER_MODE}
+      CLASSIFIER_MODEL_VERSION: ${CLASSIFIER_MODEL_VERSION}
+      USE_GEMINI: "true"
+      USE_GOOGLE_PLACES: "true"
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL}
+      GOOGLE_PLACES_API_KEY: ${GOOGLE_PLACES_API_KEY}
+      AI_PROVIDER_TIMEOUT_SECONDS: ${AI_PROVIDER_TIMEOUT_SECONDS}
+      PLACES_CACHE_TTL_SECONDS: ${PLACES_CACHE_TTL_SECONDS}
+      MAX_UPLOAD_IMAGE_BYTES: ${MAX_UPLOAD_IMAGE_BYTES}
+      MAX_UPLOAD_IMAGES: ${MAX_UPLOAD_IMAGES}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import json,urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=5); body=json.load(r); raise SystemExit(0 if body.get('ready') is True else 1)"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+
+  web:
+    build:
+      context: ../..
+      dockerfile: app/frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: https://${API_DOMAIN}
+        NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_BASE_URL: https://${API_DOMAIN}
+      NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+networks:
+  default:
+    name: snaptrip-production
 
