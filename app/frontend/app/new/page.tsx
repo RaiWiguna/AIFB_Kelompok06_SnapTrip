@@ -1,14 +1,30 @@
 import Image from "next/image"
 import Link from "next/link"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { ArrowRight, Bookmark, Heart, Lock, Sparkles, Upload } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { StepIndicator, NEW_TRIP_STEPS } from "@/components/step-indicator"
-import { COLLECTIONS, IMG, LIKED_TRIP_IDS, TRIPS } from "@/lib/data"
+import { ApiError } from "@/lib/api/client"
+import { getCollections } from "@/lib/api/collections"
+import { getLikedTripPlans } from "@/lib/api/likes"
+import { IMG } from "@/lib/data"
 
-export default function NewTripPage() {
-  const liked = TRIPS.filter((t) => LIKED_TRIP_IDS.includes(t.id)).slice(0, 4)
-  const collectionPreviews = COLLECTIONS.slice(0, 3)
+export default async function NewTripPage() {
+  const cookieHeader = (await cookies()).toString()
+  let liked
+  let collections
+  try {
+    liked = (await getLikedTripPlans(cookieHeader)).slice(0, 4)
+    collections = await getCollections(cookieHeader)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      redirect("/signin?next=%2Fnew&action=plan")
+    }
+    throw error
+  }
+  const collectionPreviews = collections.slice(0, 3)
 
   return (
     <div className="relative flex min-h-screen flex-col bg-background text-foreground">
@@ -72,12 +88,12 @@ export default function NewTripPage() {
             href="/new/likes"
             icon={<Heart className="size-5" aria-hidden />}
             title="From liked trips"
-            description={`${LIKED_TRIP_IDS.length} liked trips ready to seed your plan.`}
+            description={`${liked.length} liked trips ready to seed your plan.`}
             preview={
               <div className="grid grid-cols-3 gap-1.5">
                 {liked.slice(0, 3).map((t) => (
                   <div key={t.id} className="relative aspect-square overflow-hidden rounded-md ring-1 ring-black/5">
-                    <Image src={t.cover || "/placeholder.svg"} alt="" fill sizes="80px" className="object-cover" />
+                    <Image src={t.cover || "/placeholder.svg"} alt="" fill sizes="80px" className="object-cover" unoptimized />
                   </div>
                 ))}
               </div>
@@ -88,12 +104,12 @@ export default function NewTripPage() {
             href="/new/from-collections"
             icon={<Bookmark className="size-5" aria-hidden />}
             title="From a collection"
-            description={`${COLLECTIONS.length} personal collections to draw from.`}
+            description={`${collections.length} personal collections to draw from.`}
             preview={
               <div className="grid grid-cols-3 gap-1.5">
                 {collectionPreviews.map((c) => (
                   <div key={c.slug} className="relative aspect-square overflow-hidden rounded-md ring-1 ring-black/5">
-                    <Image src={c.cover || "/placeholder.svg"} alt="" fill sizes="80px" className="object-cover" />
+                    <Image src={c.cover || "/placeholder.svg"} alt="" fill sizes="80px" className="object-cover" unoptimized />
                   </div>
                 ))}
               </div>

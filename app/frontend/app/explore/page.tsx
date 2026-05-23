@@ -1,22 +1,28 @@
 import Image from "next/image"
 import Link from "next/link"
-import { Bell, Bookmark, ChevronDown, ChevronUp, Compass, Lock, Plus, SlidersHorizontal, Sparkles, Star, X } from "lucide-react"
+import { cookies } from "next/headers"
+import { Bookmark, ChevronDown, ChevronUp, Compass, Lock, Plus, SlidersHorizontal, Sparkles, Star, X } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
 import { TripCard } from "@/components/trip-card"
 import { CategoryIcon } from "@/components/category-icon"
-import { CATEGORIES, IMG, TRIPS } from "@/lib/data"
+import { IMG } from "@/lib/data"
+import { CATEGORIES, CATEGORY_LABEL, type CategoryId } from "@/lib/categories"
+import { getExploreTrips } from "@/lib/api/explore"
 
 export default async function ExplorePage({
   searchParams,
 }: {
-  searchParams: Promise<{ as?: string }>
+  searchParams: Promise<{ as?: string; category?: CategoryId }>
 }) {
-  const { as } = await searchParams
+  const { as, category } = await searchParams
   const isAuthed = as === "user"
-  const filtered = TRIPS.filter((t) => t.categories.includes("pantai"))
+  const selectedCategory = category && CATEGORIES.some((item) => item.id === category) ? category : "pantai"
+  const cookieHeader = isAuthed ? (await cookies()).toString() : undefined
+  const filtered = await getExploreTrips({ categories: [selectedCategory], cookieHeader })
+  const selectedLabel = CATEGORY_LABEL[selectedCategory]
 
   return (
     <div className="relative flex min-h-screen flex-col bg-background text-foreground">
@@ -41,7 +47,7 @@ export default async function ExplorePage({
             <nav aria-label="Breadcrumb" className="font-mono text-[12.5px] uppercase tracking-[0.18em] text-muted-foreground">
               <span>Explore</span>
               <span className="mx-2 text-border">/</span>
-              <span className="text-accent">Pantai</span>
+              <span className="text-accent">{selectedLabel}</span>
             </nav>
 
             <div>
@@ -56,9 +62,9 @@ export default async function ExplorePage({
 
             <div className="inline-flex items-center gap-2 rounded-full bg-card px-3.5 py-2 text-[13px] ring-1 ring-border">
               <Compass className="size-4 text-accent" aria-hidden />
-              <span className="font-medium">28 trips found</span>
+              <span className="font-medium">{filtered.length} trips found</span>
               <span className="text-muted-foreground">in</span>
-              <span className="font-medium text-accent">Pantai</span>
+              <span className="font-medium text-accent">{selectedLabel}</span>
             </div>
 
             <div className="rounded-2xl bg-card p-5 ring-1 ring-border">
@@ -144,17 +150,16 @@ export default async function ExplorePage({
             <div className="flex flex-wrap items-center gap-3">
               <span className="inline-flex items-center gap-2 rounded-full bg-primary px-3.5 py-2 text-[13px] font-medium text-primary-foreground">
                 <Star className="size-3.5 fill-current text-soft-accent" aria-hidden />
-                Filtered by: Pantai
-                <button aria-label="Clear filter" className="ml-1 grid size-5 place-items-center rounded-full bg-white/10 hover:bg-white/20">
+                Filtered by: {selectedLabel}
+                <Link href={isAuthed ? "/explore?as=user" : "/explore"} aria-label="Clear filter" className="ml-1 grid size-5 place-items-center rounded-full bg-white/10 hover:bg-white/20">
                   <X className="size-3" aria-hidden />
-                </button>
+                </Link>
               </span>
 
               <div className="flex flex-wrap items-center gap-2">
-                <CategoryChip id="pantai" selected />
-                <CategoryChip id="gunung" />
-                <CategoryChip id="air_terjun" />
-                <CategoryChip id="wisata_tradisional" />
+                {CATEGORIES.map((item) => (
+                  <CategoryChip key={item.id} id={item.id} selected={item.id === selectedCategory} isAuthed={isAuthed} />
+                ))}
               </div>
 
               <div className="ml-auto flex items-center gap-3">
@@ -176,13 +181,16 @@ export default async function ExplorePage({
 
             {/* Bento grid: featured big + smaller around */}
             <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              <TripCard trip={filtered[0]} variant="dark" size="lg" className="sm:col-span-2 lg:col-span-1" />
-              <TripCard trip={filtered[1]} variant="dark" />
-              <TripCard trip={filtered[2]} variant="dark" />
-              <TripCard trip={filtered[3]} variant="dark" />
-              <TripCard trip={filtered[4]} variant="dark" />
-              <TripCard trip={filtered[5]} variant="dark" />
-              <TripCard trip={filtered[6]} variant="dark" />
+              {filtered.map((trip, index) => (
+                <TripCard
+                  key={trip.id}
+                  trip={trip}
+                  variant="dark"
+                  size={index === 0 ? "lg" : "md"}
+                  className={index === 0 ? "sm:col-span-2 lg:col-span-1" : undefined}
+                  authHref={!isAuthed ? `/signin?next=${encodeURIComponent("/explore?as=user")}&action=like` : undefined}
+                />
+              ))}
             </div>
 
             {/* Footer hint */}
@@ -192,13 +200,13 @@ export default async function ExplorePage({
               </span>
               <div className="flex-1">
                 <p className="text-[14px] font-medium">
-                  You&apos;re browsing trips in <span className="text-accent">Pantai</span>
+                  You&apos;re browsing trips in <span className="text-accent">{selectedLabel}</span>
                 </p>
                 <p className="text-[12.5px] text-muted-foreground">
-                  Showing only coastal trips and beach destinations.
+                  Showing only trips tagged with {selectedLabel}.
                 </p>
               </div>
-              <button className="text-[13.5px] font-medium text-accent hover:underline">Clear filter</button>
+              <Link href={isAuthed ? "/explore?as=user" : "/explore"} className="text-[13.5px] font-medium text-accent hover:underline">Clear filter</Link>
             </div>
           </section>
         </div>
@@ -233,14 +241,16 @@ function Chip({
 function CategoryChip({
   id,
   selected,
+  isAuthed,
 }: {
   id: (typeof CATEGORIES)[number]["id"]
   selected?: boolean
+  isAuthed?: boolean
 }) {
   const cat = CATEGORIES.find((c) => c.id === id)!
   return (
-    <button
-      type="button"
+    <Link
+      href={`/explore?category=${id}${isAuthed ? "&as=user" : ""}`}
       className={
         selected
           ? "inline-flex items-center gap-2 rounded-full bg-primary px-3.5 py-2 text-[13px] font-medium text-primary-foreground"
@@ -252,6 +262,6 @@ function CategoryChip({
         className={selected ? "text-primary-foreground" : "text-primary"}
       />
       {cat.label}
-    </button>
+    </Link>
   )
 }

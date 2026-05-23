@@ -1,12 +1,24 @@
 import Link from "next/link"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { Heart } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { TripCard } from "@/components/trip-card"
-import { LIKED_TRIP_IDS, TRIPS } from "@/lib/data"
+import { ApiError } from "@/lib/api/client"
+import { getLikedTripPlans } from "@/lib/api/likes"
 
-export default function LikedTripsPage() {
-  const liked = TRIPS.filter((t) => LIKED_TRIP_IDS.includes(t.id))
+export default async function LikedTripsPage() {
+  const cookieHeader = (await cookies()).toString()
+  let liked
+  try {
+    liked = await getLikedTripPlans(cookieHeader)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      redirect("/signin?next=%2Flikes&action=like")
+    }
+    throw error
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">

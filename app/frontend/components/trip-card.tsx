@@ -1,7 +1,8 @@
 import Image from "next/image"
 import Link from "next/link"
 import { Bookmark, Calendar, Heart, ShieldCheck, Star, Wallet } from "lucide-react"
-import type { Trip } from "@/lib/data"
+import { TripCardLikeButton } from "@/components/trip-card-like-button"
+import type { TripCardDisplay } from "@/lib/api/types"
 import { cn } from "@/lib/utils"
 
 type Variant = "light" | "dark"
@@ -23,11 +24,13 @@ export function TripCard({
   variant = "light",
   size = "md",
   className,
+  authHref,
 }: {
-  trip: Trip
+  trip: TripCardDisplay
   variant?: Variant
   size?: Size
   className?: string
+  authHref?: string
 }) {
   return (
     <Link
@@ -63,21 +66,7 @@ export function TripCard({
           ) : (
             <span />
           )}
-          <button
-            type="button"
-            aria-label={trip.liked ? "Remove from saves" : "Save trip"}
-            className={cn(
-              "grid size-8 place-items-center rounded-full backdrop-blur-md transition",
-              trip.liked
-                ? "bg-accent text-accent-foreground"
-                : "bg-white/85 text-foreground hover:bg-white",
-            )}
-          >
-            <Heart
-              className={cn("size-4", trip.liked && "fill-current")}
-              aria-hidden
-            />
-          </button>
+          <TripCardLikeButton tripId={trip.id} liked={trip.liked} authHref={authHref} />
         </div>
 
         {/* Bottom: owner + title */}

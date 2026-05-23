@@ -1,19 +1,15 @@
 import Image from "next/image"
 import Link from "next/link"
-import { notFound } from "next/navigation"
+import { cookies } from "next/headers"
+import { notFound, redirect } from "next/navigation"
 import { ArrowRight, Bookmark, CheckCircle2, Compass, MapPin, Share2, Sparkles, X } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { TripCard } from "@/components/trip-card"
 import { CategoryIcon } from "@/components/category-icon"
-import { TRIPS, getCollectionView, type CategoryId } from "@/lib/data"
-
-const labelToId: Record<string, CategoryId> = {
-  Pantai: "pantai",
-  Gunung: "gunung",
-  "Air Terjun": "air_terjun",
-  "Wisata Tradisional": "wisata_tradisional",
-}
+import { ApiError } from "@/lib/api/client"
+import { getCollectionDetail } from "@/lib/api/collections"
+import { CATEGORY_LABEL } from "@/lib/categories"
 
 export default async function CollectionDetailPage({
   params,
@@ -25,10 +21,19 @@ export default async function CollectionDetailPage({
   const { slug } = await params
   const { select } = await searchParams
   const isSelecting = select === "1"
-  const collection = getCollectionView(slug)
-  if (!collection) notFound()
+  const cookieHeader = (await cookies()).toString()
+  let collection
+  try {
+    collection = await getCollectionDetail(slug, cookieHeader)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) notFound()
+    if (error instanceof ApiError && error.status === 401) {
+      redirect(`/signin?next=${encodeURIComponent(`/collections/${slug}`)}&action=collections`)
+    }
+    throw error
+  }
 
-  const trips = TRIPS.filter((t) => collection.tripIds.includes(t.id))
+  const trips = collection.trips
   // Per §16.10: in selection mode the user picks images to seed New Trip.
   // We pre-mark a representative selection for demo purposes.
   const preselectedCount = Math.min(trips.length, 4)
@@ -47,6 +52,7 @@ export default async function CollectionDetailPage({
               priority
               sizes="100vw"
               className="object-cover"
+              unoptimized
             />
             <div className="absolute inset-0 bg-gradient-to-b from-primary/45 via-primary/25 to-background" />
           </div>
@@ -64,13 +70,13 @@ export default async function CollectionDetailPage({
               <div className="flex flex-wrap items-start justify-between gap-6">
                 <div className="max-w-2xl">
                   <div className="flex flex-wrap items-center gap-2">
-                    {collection.categories.map((c) => (
+                    {collection.categoryIds.map((c) => (
                       <span
                         key={c}
                         className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-[12px] font-medium ring-1 ring-border"
                       >
-                        <CategoryIcon id={labelToId[c] ?? "pantai"} className="size-3.5" />
-                        {c}
+                        <CategoryIcon id={c} className="size-3.5" />
+                        {CATEGORY_LABEL[c]}
                       </span>
                     ))}
                   </div>

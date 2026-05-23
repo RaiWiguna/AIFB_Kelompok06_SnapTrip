@@ -4,8 +4,8 @@
 | --- | --- |
 | Document status | Active handoff |
 | Last updated | 2026-05-23 |
-| Branch | `feat/frontend-init` |
-| Purpose | Resume point after frontend mock implementation and Phase 7 integration planning |
+| Branch | `feat/frontend-integration` |
+| Purpose | Resume point after Phase 7.0-7.3 frontend/backend integration |
 
 ## 1. Completed This Session
 
@@ -55,6 +55,15 @@
   - Phase 8 is retired as a standalone phase and merged into Phase 7,
   - Phase 9 is now integrated product E2E validation,
   - Phase 11 remains responsible for real agentic planner documents, acceptance, invites, and participants.
+- Implemented Phase 7.0-7.3:
+  - recorded DTO/source mapping in `.agents/integrationPhases.md`,
+  - added backend display composition for trip cards, collections, account summary, image URLs, and deterministic collection slugs,
+  - added `GET /api/account/summary`, `GET /api/likes/trip-plans`, and `GET /api/collections/{slug_or_id}`,
+  - extended Explore and collection list responses with display-ready fields,
+  - changed `/api/images/{image_id}` to stream authorized/private or public cover image bytes,
+  - added frontend env/API client/adapters under `app/frontend/lib/api/`,
+  - wired signup, signin, account, Explore, likes, collections, collection detail, new-trip source picker, liked-trip source picker, and collection source picker to backend APIs,
+  - repaired frontend `test`, `typecheck`, and `lint` script support.
 
 ## 2. Current Repo Facts
 
@@ -64,6 +73,7 @@
 - Root npm scripts must orchestrate frontend npm and backend `uv`.
 - `.agents/integrationPhases.md` is the detailed source for Phase 7 integration work.
 - Current frontend visual behavior should be preserved; when frontend/backend shapes differ, prefer backend/API adapter improvements over UI redesign.
+- Phase 7.0-7.3 integrated pages now use backend API/adapters instead of runtime mock data, except static imagery placeholders from `IMG`.
 - Google Places API remains backend-only. Google Maps JavaScript API is allowed in frontend only for map rendering through `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`.
 - Agentic planner implementation is intentionally sequenced after Docker, remote compose, Caddy, and GitHub Actions deployment foundation.
 - Backend tests use `SNAPTRIP_STORAGE=memory` through test setup. Runtime defaults remain MongoDB-oriented.
@@ -96,6 +106,16 @@ Documentation-only verification after integration planning update:
 - Reviewed `.agents/implementationPhase.md` and `.agents/integrationPhases.md` for stale standalone Phase 7/8 instructions and pre-planner integration wording.
 - No runtime tests were run because only `.agents/` documentation files changed.
 
+Verification after Phase 7.0-7.3 implementation:
+
+- `npm run test:backend` passed: backend 21 passed / 1 skipped.
+- `npm run test:frontend` passed: frontend 2 test files / 5 tests.
+- `npm run typecheck` passed.
+- `npm run lint` passed; frontend reports 5 existing warnings and 0 errors.
+- `npm run build` passed.
+- `npm run test` passed: backend 21 passed / 1 skipped, frontend 5 tests, Playwright no-test harness.
+- `npm audit --prefix app/frontend --omit=dev` reports existing production dependency advisories for `next@16.2.4` and bundled `postcss`; resolving them requires a separate dependency update decision.
+
 ## 4. Known Caveats
 
 - Mongo runtime integration is implemented at the store level, but the current automated tests use the in-memory store. Future Phase 6 work should add testcontainers MongoDB/GridFS coverage.
@@ -103,17 +123,17 @@ Documentation-only verification after integration planning update:
 - The remote compose file is intentionally a minimal valid Mongo stub so `npm run docker:config` passes during Phase 1-4. Phase 10 must replace it with full Caddy/API/web/Mongo production topology.
 - The real MobileNetV2 classifier path is a boundary placeholder; mock mode is the supported local/test default until a trained `.pt` artifact is promoted.
 - Google Places and Gemini provider calls are disabled by default in local/test env. Tests use mocked or deterministic provider behavior.
-- The current frontend still uses mock data modules at runtime. Phase 7 must replace production-page mock usage with API clients/adapters while preserving the current UI.
+- Some frontend routes still use mock data modules by design because they are outside Phase 7.0-7.3 or are explicit Phase 11/demo boundaries: Trip detail routes, planner routes, invite routes, and later new-trip/recommendation steps.
 - Google Maps frontend rendering is planned but not implemented. CI/local test defaults must pass without a Maps key by using the static fallback map.
 - No real secrets should be added to `.env.local`, `.env.local.example`, or deployment env examples.
 - ADR `docs/adr/0002-runtime-foundation-and-storage-boundaries.md` captures the durable implementation caveats and follow-up hardening work without tying those decisions to roadmap phase labels.
+- Frontend npm audit currently reports advisories against `next@16.2.4`; this was not changed in Phase 7.0-7.3 to avoid widening the scope into framework dependency upgrades.
 
 ## 5. Recommended Next Start
 
-Start Phase 7 from `.agents/integrationPhases.md`:
+Continue Phase 7 from `.agents/integrationPhases.md`:
 
-1. Run the Phase 7.0 contract audit: inventory every runtime import from `@/lib/data`, `@/lib/trip-detail`, and `@/lib/planner-mock`.
-2. Define frontend display DTOs and map each field to existing backend fields, required backend display endpoints, or explicit Phase 11 placeholders.
-3. Implement the frontend API client/adapters and backend display endpoints incrementally, preserving the current frontend layout.
-4. Keep Google Places and Gemini secrets backend-only; use Google Maps JS only for frontend map rendering with a restricted public browser key.
-5. Do not implement Phase 11 planner acceptance, invites, participants, or persisted structured documents during Phase 7.
+1. Start at Phase 7.4: wire `/new/upload`, `/new/review-images`, and `/new/categories` to trip creation sessions, image upload, classification, and category confirmation.
+2. Then implement Phase 7.5 recommendations and destination selection against the existing backend recommendation endpoints.
+3. Keep Google Places and Gemini secrets backend-only; use Google Maps JS only for Phase 7.6 map rendering with a restricted public browser key.
+4. Do not implement Phase 11 planner acceptance, invites, participants, or persisted structured documents during Phase 7.

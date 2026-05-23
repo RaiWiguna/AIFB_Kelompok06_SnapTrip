@@ -258,7 +258,7 @@ Exit criteria:
 
 ## 11. Phase 7 - Frontend/Backend Integration
 
-Status: Pending.
+Status: In progress.
 
 Execution list:
 
@@ -275,6 +275,16 @@ Exit criteria:
 - Integrated frontend product surfaces use backend API/adapters instead of runtime mock data, except explicit Phase 11 planner/demo boundaries.
 - Current frontend visual behavior is preserved with only minor adapter/state changes.
 - `.agents/integrationPhases.md` remains the detailed execution source for Phase 7.
+
+Current implementation notes:
+
+- Phase 7.0-7.3 are implemented in repo terms:
+  - DTO/source mapping is recorded in `.agents/integrationPhases.md`.
+  - Frontend API client, env helper, display types, and adapters exist under `app/frontend/lib/api/`.
+  - Auth pages submit to backend auth APIs with cookie-backed sessions.
+  - Account summary, Explore, liked trips, collections, collection detail, and new-trip source preview pages are backend-backed.
+  - Backend display endpoints now include `GET /api/account/summary`, `GET /api/likes/trip-plans`, and `GET /api/collections/{slug_or_id}`.
+- Phase 7.4 and later remain pending; image classification flow, recommendations UI, maps, trip detail document reads, and planner preview are not part of the completed subphase.
 
 ## 12. Phase 8 - Merged into Phase 7
 

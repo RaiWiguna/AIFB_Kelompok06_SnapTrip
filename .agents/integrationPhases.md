@@ -85,6 +85,28 @@ Acceptance:
 - Every current frontend page has a real backend source or an explicit Phase 11 boundary.
 - No implementer needs to redesign UI fields before wiring the API.
 
+Phase 7.0 DTO/source mapping implemented for Phase 7.1-7.3:
+
+| Frontend surface | Runtime source classification | DTO/source |
+| --- | --- | --- |
+| `/signin`, `/signup` | Backend-integrated | `POST /api/auth/login`, `POST /api/auth/signup`, `CurrentUserDisplay` adapter |
+| `/account` | Backend-integrated | `GET /api/account/summary`, `AccountSummaryDisplay`, `MyTripDisplay` |
+| `/explore` | Backend-integrated | `GET /api/explore`, `ExploreTripDisplay` / `TripCardDisplay` |
+| `/likes` | Backend-integrated | `GET /api/likes/trip-plans`, `TripCardDisplay` |
+| `/collections` | Backend-integrated | `GET /api/collections`, `CollectionCardDisplay` |
+| `/collections/[slug]` | Backend-integrated | `GET /api/collections/{slug_or_id}`, `CollectionDetailDisplay` / `TripCardDisplay` |
+| `/new` | Backend-integrated source previews | liked trip and collection previews from backend; static `IMG` only for upload/source illustration |
+| `/new/likes` | Backend-integrated source picker | `GET /api/likes/trip-plans`, `TripCardDisplay` |
+| `/new/from-collections` | Backend-integrated source picker | `GET /api/collections`, `CollectionCardDisplay` |
+| Marketing/landing/about/error pages | Fixture-allowed | static `IMG`, landing recommendation examples, and non-runtime copy remain in `@/lib/data` |
+| `/trips/**`, `/plan/**`, `/invite/**`, planner components | Phase 11/demo boundary | `@/lib/trip-detail`, `@/lib/planner-mock`, planner/session fixtures remain until later planner/detail phases |
+
+Display DTO defaults:
+
+- `cover_url` values from backend are adapted into browser-safe image URLs; `/api/images/{image_id}` is prefixed with the frontend API base URL, and public placeholder assets remain relative frontend paths.
+- Canonical category IDs remain backend values and are mapped to display labels/icons in frontend adapters/components.
+- Backend display composition owns card counts, owner display summaries, collection slugs, collection cover grids, and account counts.
+
 ### Phase 7.1 - Frontend API Client and Runtime State
 
 Work:

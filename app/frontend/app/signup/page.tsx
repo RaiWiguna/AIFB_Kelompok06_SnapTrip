@@ -1,6 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowRight, AtSign, Compass, Lock, Sparkles, User } from "lucide-react"
+import { Compass, Sparkles } from "lucide-react"
+import { SignUpForm } from "@/components/auth/signup-form"
 import { SnapTripLogo } from "@/components/snaptrip-logo"
 import { IMG } from "@/lib/data"
 import { buildAuthHref, getAuthCopy, isSafeNext, markAuthedNext } from "@/lib/auth-context"
@@ -75,55 +76,10 @@ export default async function SignUpPage({
             </div>
           )}
 
-          <form className="mt-7 space-y-3.5">
-            <label className="block">
-              <span className="text-[12.5px] font-medium text-foreground/75">Display name</span>
-              <div className="mt-2 flex items-center gap-3 rounded-[18px] bg-card px-4 py-3 ring-1 ring-border transition focus-within:ring-primary">
-                <User className="size-4 text-muted-foreground" aria-hidden />
-                <input
-                  type="text"
-                  placeholder="Lintang Pertiwi"
-                  className="min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-muted-foreground"
-                />
-              </div>
-            </label>
-
-            <label className="block">
-              <span className="text-[12.5px] font-medium text-foreground/75">Email</span>
-              <div className="mt-2 flex items-center gap-3 rounded-[18px] bg-card px-4 py-3 ring-1 ring-border transition focus-within:ring-primary">
-                <AtSign className="size-4 text-muted-foreground" aria-hidden />
-                <input
-                  type="email"
-                  placeholder="you@example.com"
-                  className="min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-muted-foreground"
-                />
-              </div>
-            </label>
-
-            <label className="block">
-              <span className="text-[12.5px] font-medium text-foreground/75">Password</span>
-              <div className="mt-2 flex items-center gap-3 rounded-[18px] bg-card px-4 py-3 ring-1 ring-border transition focus-within:ring-primary">
-                <Lock className="size-4 text-muted-foreground" aria-hidden />
-                <input
-                  type="password"
-                  placeholder="At least 8 characters"
-                  className="min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-muted-foreground"
-                />
-              </div>
-            </label>
-
-            <p className="pt-1 text-[12px] leading-relaxed text-muted-foreground">
-              By creating an account you agree to keep planning honest. SnapTrip never sells your trip data.
-            </p>
-
-            <Link
-              href={successHref}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-[18px] bg-primary px-5 py-3.5 text-[14px] font-medium text-primary-foreground shadow-[0_18px_42px_rgba(18,60,53,0.22)] transition hover:-translate-y-0.5 hover:bg-[#0b2a25]"
-            >
-              {hasContext ? "Create account and continue" : "Create account"}
-              <ArrowRight className="size-4" aria-hidden />
-            </Link>
-          </form>
+          <SignUpForm
+            successHref={successHref}
+            buttonLabel={hasContext ? "Create account and continue" : "Create account"}
+          />
 
           <p className="mt-6 text-[13.5px] text-muted-foreground">
             Already have an account?{" "}

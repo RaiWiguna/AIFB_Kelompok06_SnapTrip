@@ -1,13 +1,25 @@
 import Image from "next/image"
 import Link from "next/link"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { ArrowLeft, ArrowRight, Heart } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { StepIndicator, NEW_TRIP_STEPS } from "@/components/step-indicator"
-import { LIKED_TRIP_IDS, TRIPS } from "@/lib/data"
+import { ApiError } from "@/lib/api/client"
+import { getLikedTripPlans } from "@/lib/api/likes"
 
-export default function NewFromLikesPage() {
-  const liked = TRIPS.filter((t) => LIKED_TRIP_IDS.includes(t.id))
+export default async function NewFromLikesPage() {
+  const cookieHeader = (await cookies()).toString()
+  let liked
+  try {
+    liked = await getLikedTripPlans(cookieHeader)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      redirect("/signin?next=%2Fnew%2Flikes&action=plan")
+    }
+    throw error
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -67,7 +79,7 @@ export default function NewFromLikesPage() {
                     }
                   >
                     <div className="relative aspect-[4/3]">
-                      <Image src={t.cover || "/placeholder.svg"} alt="" fill sizes="33vw" className="object-cover" />
+                      <Image src={t.cover || "/placeholder.svg"} alt="" fill sizes="33vw" className="object-cover" unoptimized />
                       <span
                         className={
                           selected

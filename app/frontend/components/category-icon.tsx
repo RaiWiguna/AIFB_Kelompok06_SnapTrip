@@ -1,4 +1,4 @@
-import type { CategoryId } from "@/lib/data"
+import type { CategoryId } from "@/lib/categories"
 import { cn } from "@/lib/utils"
 
 /**

@@ -1,12 +1,25 @@
 import Image from "next/image"
 import Link from "next/link"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { ArrowLeft, ArrowRight, Bookmark } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { StepIndicator, NEW_TRIP_STEPS } from "@/components/step-indicator"
-import { COLLECTIONS } from "@/lib/data"
+import { ApiError } from "@/lib/api/client"
+import { getCollections } from "@/lib/api/collections"
 
-export default function NewFromCollectionsPage() {
+export default async function NewFromCollectionsPage() {
+  const cookieHeader = (await cookies()).toString()
+  let collections
+  try {
+    collections = await getCollections(cookieHeader)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      redirect("/signin?next=%2Fnew%2Ffrom-collections&action=plan")
+    }
+    throw error
+  }
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <AppHeader active="new" />
@@ -38,7 +51,7 @@ export default function NewFromCollectionsPage() {
         </div>
 
         <ul className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {COLLECTIONS.map((c) => (
+          {collections.map((c) => (
             <li key={c.slug}>
               <Link
                 href={`/collections/${c.slug}`}
@@ -47,7 +60,7 @@ export default function NewFromCollectionsPage() {
                 <div className="grid grid-cols-2 gap-1 p-2">
                   {c.covers.slice(0, 4).map((src, i) => (
                     <div key={i} className="relative aspect-[5/4] overflow-hidden rounded-xl ring-1 ring-black/5">
-                      <Image src={src || "/placeholder.svg"} alt="" fill sizes="200px" className="object-cover" />
+                      <Image src={src || "/placeholder.svg"} alt="" fill sizes="200px" className="object-cover" unoptimized />
                     </div>
                   ))}
                 </div>

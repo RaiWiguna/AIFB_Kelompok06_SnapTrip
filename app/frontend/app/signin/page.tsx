@@ -1,6 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowRight, Compass, Lock, Mail, Sparkles } from "lucide-react"
+import { Compass, Sparkles } from "lucide-react"
+import { SignInForm } from "@/components/auth/signin-form"
 import { SnapTripLogo } from "@/components/snaptrip-logo"
 import { IMG } from "@/lib/data"
 import { buildAuthHref, getAuthCopy, isSafeNext, markAuthedNext } from "@/lib/auth-context"
@@ -53,39 +54,7 @@ export default async function SignInPage({
             </div>
           )}
 
-          <form className="mt-8 space-y-4">
-            <label className="block">
-              <span className="text-[12.5px] font-medium text-foreground/75">Email</span>
-              <div className="mt-2 flex items-center gap-3 rounded-[18px] bg-card px-4 py-3.5 ring-1 ring-border transition focus-within:ring-primary">
-                <Mail className="size-4 text-muted-foreground" aria-hidden />
-                <input
-                  type="email"
-                  placeholder="you@example.com"
-                  className="min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-muted-foreground"
-                />
-              </div>
-            </label>
-
-            <label className="block">
-              <span className="text-[12.5px] font-medium text-foreground/75">Password</span>
-              <div className="mt-2 flex items-center gap-3 rounded-[18px] bg-card px-4 py-3.5 ring-1 ring-border transition focus-within:ring-primary">
-                <Lock className="size-4 text-muted-foreground" aria-hidden />
-                <input
-                  type="password"
-                  placeholder="Password"
-                  className="min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-muted-foreground"
-                />
-              </div>
-            </label>
-
-            <Link
-              href={successHref}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-[18px] bg-primary px-5 py-4 text-[14px] font-medium text-primary-foreground shadow-[0_18px_42px_rgba(18,60,53,0.22)] transition hover:-translate-y-0.5 hover:bg-[#0b2a25]"
-            >
-              {hasContext ? "Sign in and continue" : "Sign in"}
-              <ArrowRight className="size-4" aria-hidden />
-            </Link>
-          </form>
+          <SignInForm successHref={successHref} buttonLabel={hasContext ? "Sign in and continue" : "Sign in"} />
 
           <p className="mt-6 text-[13.5px] text-muted-foreground">
             New to SnapTrip?{" "}

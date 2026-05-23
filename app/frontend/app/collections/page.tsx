@@ -1,10 +1,16 @@
 import Image from "next/image"
 import Link from "next/link"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { ArrowRight, Bookmark, Layers, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { CategoryIcon } from "@/components/category-icon"
-import { CATEGORIES, COLLECTIONS, IMG, TRIPS, type CategoryId } from "@/lib/data"
+import { ApiError } from "@/lib/api/client"
+import { getCollections } from "@/lib/api/collections"
+import { getExploreTrips } from "@/lib/api/explore"
+import { CATEGORIES, type CategoryId } from "@/lib/categories"
+import { IMG } from "@/lib/data"
 
 const COVER: Record<CategoryId, string> = {
   pantai: IMG.diamondBeach,
@@ -13,7 +19,20 @@ const COVER: Record<CategoryId, string> = {
   wisata_tradisional: IMG.baliWomanTemple,
 }
 
-export default function CollectionsPage() {
+export default async function CollectionsPage() {
+  const cookieHeader = (await cookies()).toString()
+  let collections
+  let publicTrips
+  try {
+    collections = await getCollections(cookieHeader)
+    publicTrips = await getExploreTrips({ cookieHeader, limit: 50 })
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      redirect("/signin?next=%2Fcollections&action=collections")
+    }
+    throw error
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <AppHeader active="collections" />
@@ -47,10 +66,10 @@ export default function CollectionsPage() {
                 Personal boards
               </h2>
             </div>
-            <span className="text-[12.5px] text-muted-foreground">{COLLECTIONS.length} collections</span>
+            <span className="text-[12.5px] text-muted-foreground">{collections.length} collections</span>
           </div>
 
-          {COLLECTIONS.length === 0 ? (
+          {collections.length === 0 ? (
             <div className="rounded-3xl bg-secondary/40 p-10 text-center ring-1 ring-border">
               <p className="font-display text-[22px] tracking-tight text-primary">
                 No collections yet.
@@ -76,7 +95,7 @@ export default function CollectionsPage() {
             </div>
           ) : (
             <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {COLLECTIONS.map((c) => (
+              {collections.map((c) => (
                 <li
                   key={c.slug}
                   className="group relative overflow-hidden rounded-3xl bg-card ring-1 ring-border transition hover:ring-primary/40"
@@ -85,7 +104,7 @@ export default function CollectionsPage() {
                     <div className="grid grid-cols-2 gap-1 p-2">
                       {c.covers.slice(0, 4).map((src, i) => (
                         <div key={i} className="relative aspect-[5/4] overflow-hidden rounded-xl ring-1 ring-black/5">
-                          <Image src={src || "/placeholder.svg"} alt="" fill sizes="200px" className="object-cover" />
+                          <Image src={src || "/placeholder.svg"} alt="" fill sizes="200px" className="object-cover" unoptimized />
                         </div>
                       ))}
                     </div>
@@ -142,7 +161,7 @@ export default function CollectionsPage() {
 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
           {CATEGORIES.map((c) => {
-            const count = TRIPS.filter((t) => t.categories.includes(c.id)).length
+            const count = publicTrips.filter((t) => t.categories.includes(c.id)).length
             return (
               <Link
                 key={c.id}

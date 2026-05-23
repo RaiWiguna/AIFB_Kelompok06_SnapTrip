@@ -3,6 +3,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import get_store, require_user
 from app.core.ids import new_id
 from app.schemas.api import CollectionCreateRequest, CollectionRenameRequest
+from app.services.display import (
+    collection_card_display,
+    collection_detail_display,
+    find_collection_by_slug_or_id,
+)
 
 router = APIRouter()
 
@@ -22,7 +27,13 @@ async def create_collection(
 ):
     collection = await store.save_doc(
         "collections",
-        {"id": new_id("col"), "owner_id": user["id"], "name": payload.name.strip()},
+        {
+            "id": new_id("col"),
+            "owner_id": user["id"],
+            "name": payload.name.strip(),
+            "description": "",
+            "visibility": "private",
+        },
     )
     return {"collection": collection}
 
@@ -30,7 +41,19 @@ async def create_collection(
 @router.get("")
 async def list_collections(store=Depends(get_store), user=Depends(require_user)):
     collections = await store.list_docs("collections", owner_id=user["id"])
-    return {"collections": collections}
+    return {"collections": [await collection_card_display(store, item) for item in collections]}
+
+
+@router.get("/{slug_or_id}")
+async def get_collection_detail(
+    slug_or_id: str,
+    store=Depends(get_store),
+    user=Depends(require_user),
+):
+    collection = await find_collection_by_slug_or_id(store, user["id"], slug_or_id)
+    if not collection:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    return {"collection": await collection_detail_display(store, collection, viewer_id=user["id"])}
 
 
 @router.patch("/{collection_id}")
