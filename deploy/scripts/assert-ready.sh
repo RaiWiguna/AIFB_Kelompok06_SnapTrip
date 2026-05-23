@@ -5,14 +5,14 @@ READY_URL="${1:?READY_URL is required}"
 
 payload="$(curl --fail --silent --show-error --location "${READY_URL}")"
 
-python - "${payload}" <<'PY'
-import json
-import sys
+compact_payload="$(printf '%s' "${payload}" | tr -d '[:space:]')"
 
-payload = json.loads(sys.argv[1])
-dependencies = payload.get("dependencies") or {}
-if payload.get("ready") is not True:
-    raise SystemExit(f"Unexpected readiness payload: {payload}")
-if dependencies.get("mongo") != "ok" or dependencies.get("gridfs") != "ok":
-    raise SystemExit(f"Unexpected readiness dependencies: {payload}")
-PY
+case "${compact_payload}" in
+  *'"ready":true'*'"dependencies":{'*'"mongo":"ok"'*'"gridfs":"ok"'* | \
+  *'"ready":true'*'"dependencies":{'*'"gridfs":"ok"'*'"mongo":"ok"'*)
+    ;;
+  *)
+    echo "Unexpected readiness payload: ${payload}" >&2
+    exit 1
+    ;;
+esac
