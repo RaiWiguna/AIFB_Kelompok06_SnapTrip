@@ -35,7 +35,7 @@ async def create_collection(
             "visibility": "private",
         },
     )
-    return {"collection": collection}
+    return {"collection": await collection_card_display(store, collection)}
 
 
 @router.get("")

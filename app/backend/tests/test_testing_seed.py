@@ -4,6 +4,12 @@ def test_integrated_journey_seed_is_test_only_and_resets_memory_store(client):
     assert response.status_code == 200
     body = response.json()
     assert body["seeded"] is True
+    assert list(body["trips_by_category"]) == [
+        "pantai",
+        "gunung",
+        "air_terjun",
+        "wisata_tradisional",
+    ]
     assert body["trips_by_category"]["pantai"] == "trip_e2e_pantai"
     assert body["private_trip_id"] == "trip_e2e_private"
 
@@ -17,4 +23,7 @@ def test_integrated_journey_seed_is_test_only_and_resets_memory_store(client):
         "air_terjun",
         "wisata_tradisional",
     }
+    assert items[0]["id"] == "trip_e2e_pantai"
+    assert items[0]["duration_days"] == 2
+    assert items[0]["editor_pick"] is True
     assert "trip_e2e_private" not in {item["id"] for item in items}

@@ -92,7 +92,11 @@ async def test_collection_list_detail_slug_and_id_lookup(client):
     user = signup(client)
     plan = await create_trip_plan(client, user["id"], title="Saved Trip")
     created = client.post("/api/collections", json={"name": "Bali quiet week"})
-    collection_id = created.json()["collection"]["id"]
+    created_collection = created.json()["collection"]
+    collection_id = created_collection["id"]
+    assert created_collection["slug"].startswith("bali-quiet-week-")
+    assert created_collection["count"] == 0
+    assert len(created_collection["cover_grid_urls"]) == 4
     client.post(f"/api/collections/{collection_id}/items/{plan['id']}")
 
     list_response = client.get("/api/collections")

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import get_settings_from_app, get_store
-from app.core.categories import CATEGORY_IDS
+from app.core.categories import CANONICAL_CATEGORIES
 from app.core.security import hash_password, sha256_bytes
 from app.db.seeds import DESTINATION_SEEDS
 
@@ -40,7 +40,8 @@ async def reset_product_journeys(store=Depends(get_store), settings=Depends(get_
     )
 
     seeds_by_category = []
-    for category in CATEGORY_IDS:
+    for category_item in CANONICAL_CATEGORIES:
+        category = category_item["id"]
         seed = next(item for item in DESTINATION_SEEDS if category in item["categories"])
         seeds_by_category.append(seed)
 
