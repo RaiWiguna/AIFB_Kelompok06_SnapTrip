@@ -91,6 +91,7 @@ async def trip_card_display(
         "owner_display": await owner_display(store, plan["owner_id"]),
         "categories": categories,
         "cover_image_id": plan.get("cover_image_id"),
+        "source_image_id": plan.get("cover_image_id"),
         "cover_url": image_url(plan.get("cover_image_id"), categories),
         "region": plan.get("region") or plan.get("destination_region") or "Indonesia",
         "duration_days": plan.get("duration_days") or plan.get("days") or 1,

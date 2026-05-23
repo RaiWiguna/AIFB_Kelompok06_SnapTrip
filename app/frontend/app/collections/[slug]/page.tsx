@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation"
 import { ArrowRight, Bookmark, CheckCircle2, Compass, MapPin, Share2, Sparkles, X } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
+import { SourceImagesContinueButton } from "@/components/source-images-continue-button"
 import { TripCard } from "@/components/trip-card"
 import { CategoryIcon } from "@/components/category-icon"
 import { ApiError } from "@/lib/api/client"
@@ -36,7 +37,7 @@ export default async function CollectionDetailPage({
   const trips = collection.trips
   // Per §16.10: in selection mode the user picks images to seed New Trip.
   // We pre-mark a representative selection for demo purposes.
-  const preselectedCount = Math.min(trips.length, 4)
+  const usableImageIds = trips.map((trip) => trip.sourceImageId).filter((id): id is string => Boolean(id)).slice(0, 8)
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -162,8 +163,8 @@ export default async function CollectionDetailPage({
           )}
 
           <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {trips.map((t, i) => {
-              const isSelected = isSelecting && i < preselectedCount
+            {trips.map((t) => {
+              const isSelected = Boolean(isSelecting && t.sourceImageId && usableImageIds.includes(t.sourceImageId))
               return (
                 <div key={t.id} className="relative">
                   <TripCard trip={t} />
@@ -204,7 +205,7 @@ export default async function CollectionDetailPage({
                 </span>
                 <div>
                   <p className="text-[13.5px] font-medium text-foreground">
-                    {preselectedCount} of {trips.length} covers selected
+                    {usableImageIds.length} of {trips.length} backend-owned covers selected
                   </p>
                   <p className="text-[12px] text-muted-foreground">
                     Continue to seed your new trip with these covers.
@@ -218,13 +219,12 @@ export default async function CollectionDetailPage({
                 >
                   Cancel
                 </Link>
-                <Link
-                  href={`/new/review-images?seed=${collection.slug}`}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-primary px-5 py-2.5 text-[13px] font-medium text-primary-foreground hover:bg-[#0b2a25]"
-                >
-                  Continue to review
-                  <ArrowRight className="size-3.5" aria-hidden />
-                </Link>
+                <SourceImagesContinueButton
+                  source="collection"
+                  imageIds={usableImageIds}
+                  fallbackHref="/new/upload"
+                  label="Continue to review"
+                />
               </div>
             </div>
           </div>

@@ -284,7 +284,11 @@ Current implementation notes:
   - Auth pages submit to backend auth APIs with cookie-backed sessions.
   - Account summary, Explore, liked trips, collections, collection detail, and new-trip source preview pages are backend-backed.
   - Backend display endpoints now include `GET /api/account/summary`, `GET /api/likes/trip-plans`, and `GET /api/collections/{slug_or_id}`.
-- Phase 7.4 and later remain pending; image classification flow, recommendations UI, maps, trip detail document reads, and planner preview are not part of the completed subphase.
+- New trip image-to-recommendation integration is implemented in repo terms:
+  - `GET /api/trip-creation-sessions/{session_id}` returns reload-safe session display state with images, latest classification, latest recommendations, and selected recommendation IDs.
+  - `/new/upload`, `/new/review-images`, `/new/categories`, and `/new/recommendations` use backend trip creation, classification, category confirmation, recommendation, and selection APIs.
+  - Liked-trip and collection source flows only send backend-owned image IDs to classification; static fallback covers remain display-only.
+- Maps, trip detail document reads, planner preview promotion, E2E coverage, and deployment remain pending.
 
 ## 12. Phase 8 - Merged into Phase 7
 
