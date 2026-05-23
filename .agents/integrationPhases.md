@@ -383,6 +383,8 @@ Implementation notes:
 
 ### Phase 7.8 - Planner Preview Contract Boundary
 
+Status: Implemented in repo terms.
+
 Work:
 
 - Keep `PlannerWorkspace` visually available, but mark backend integration as contract-only until Phase 11.
@@ -410,7 +412,17 @@ Acceptance:
 - Chat and agent actions remain mock/demo until Phase 11.
 - Acceptance, invites, and participants are explicitly excluded from Phase 7 implementation.
 
+Implementation notes:
+
+- Added authenticated owner-only `GET /api/planner-preview/{trip_creation_session_id}`.
+- Preview data is deterministic, generated from selected recommendation items and confirmed categories, and does not persist official planner documents or accepted Trip Plans.
+- `/plan/[id]`, `/plan/[id]/memo`, `/plan/[id]/itinerary`, and `/plan/[id]/budget` now read backend planner preview data through frontend adapters.
+- The scripted planner conversation is isolated as demo behavior under `planner-demo`; it remains UI-only until Phase 11.
+- Review/accept UI is explicitly preview-only and does not navigate to a fake accepted Trip Plan.
+
 ### Phase 7.9 - Integration Verification and Cleanup
+
+Status: Implemented in repo terms for the planner preview boundary.
 
 Work:
 
@@ -433,6 +445,14 @@ Acceptance:
 - `npm run lint` passes.
 - `npm run build` passes.
 - `npm run test:e2e` passes with integrated smoke coverage.
+
+Implementation notes:
+
+- `/trips` now reads backend account summary data instead of `MY_TRIPS` and `JOINED_TRIPS` runtime fixtures.
+- `/new/review` and `/plan/[id]/accepted` are quarantined as explicit deferred-boundary pages and no longer present fake acceptance behavior.
+- Added frontend fixture-import audit coverage for integrated planner and trips pages.
+- Added Playwright smoke coverage for signup, trip creation session setup, deterministic recommendations, selected destination persistence, and planner preview rendering.
+- Added frontend env example coverage for `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`.
 
 ## 4. API and Interface Changes
 

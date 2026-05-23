@@ -1,16 +1,28 @@
-import { notFound } from "next/navigation"
+import { cookies } from "next/headers"
+import { notFound, redirect } from "next/navigation"
 import { AppFooter } from "@/components/app-footer"
 import { AppHeader } from "@/components/app-header"
 import { TripBackLink } from "@/components/trip-back-link"
 import { TripItineraryBody } from "@/components/trip-itinerary-body"
-import { getPlanSession } from "@/lib/data"
-import { getTripDetailFull } from "@/lib/trip-detail"
+import { ApiError } from "@/lib/api/client"
+import { getPlannerPreview } from "@/lib/api/planner-preview"
 
 export default async function PlannerItineraryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const session = getPlanSession(id)
-  if (!session) notFound()
-  const detail = getTripDetailFull(id)
+  const cookieHeader = (await cookies()).toString()
+  let preview
+  try {
+    preview = await getPlannerPreview(id, cookieHeader)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      redirect(`/signin?next=${encodeURIComponent(`/plan/${id}/itinerary`)}&action=trips`)
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      notFound()
+    }
+    throw error
+  }
+  const detail = preview.detail
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -29,7 +41,7 @@ export default async function PlannerItineraryPage({ params }: { params: Promise
             Full Itinerary · Draft
           </p>
           <h1 className="mt-2 max-w-2xl font-display text-[clamp(2rem,3vw,2.8rem)] leading-[1.05] tracking-[-0.02em] text-primary">
-            {session.title}
+            {preview.title}
           </h1>
           <p className="mt-3 max-w-xl text-[14.5px] leading-relaxed text-foreground/75">
             Day-by-day preview from the planner draft. Return to the conversation to revise routes, swap stays, or

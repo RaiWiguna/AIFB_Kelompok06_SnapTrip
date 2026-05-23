@@ -1,6 +1,5 @@
 "use client"
 
-import Link from "next/link"
 import { ArrowLeft, ArrowRight, CheckCircle2, Globe2, Lock, Users } from "lucide-react"
 
 type WorkspaceState = {
@@ -18,12 +17,12 @@ type WorkspaceState = {
 }
 
 export function ReviewPanel({
-  tripId,
   state,
+  acceptanceReason,
   onBack,
 }: {
-  tripId: string
   state: WorkspaceState
+  acceptanceReason?: string
   onBack: () => void
 }) {
   const memoOk = state.memoTilesCount > 0 && Boolean(state.memoCaption)
@@ -35,10 +34,10 @@ export function ReviewPanel({
       <header>
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-accent">Step 5 · Final review</div>
         <h2 className="mt-2 font-display text-[22px] tracking-tight text-primary">
-          Review and accept your plan
+          Review your preview
         </h2>
         <p className="mt-1 text-[13px] leading-relaxed text-foreground/75">
-          Skim the summary below, choose how you want to share it, then accept to save it as a real trip.
+          Skim the summary below. This preview stays draft-only until the planner acceptance flow is implemented.
         </p>
       </header>
 
@@ -103,15 +102,20 @@ export function ReviewPanel({
           <ArrowLeft className="size-3.5" aria-hidden />
           Back to assistant
         </button>
-        <Link
-          href={`/plan/${tripId}/accepted`}
-          className="group inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-primary px-4 py-2.5 text-[13.5px] font-medium text-primary-foreground transition-colors hover:bg-[#0b2a25]"
+        <button
+          type="button"
+          disabled
+          title={acceptanceReason || "Acceptance is implemented in the later planner flow."}
+          className="inline-flex flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-full bg-secondary px-4 py-2.5 text-[13.5px] font-medium text-muted-foreground ring-1 ring-border"
         >
           <CheckCircle2 className="size-4" aria-hidden />
-          Accept Plan
-          <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
-        </Link>
+          Preview only
+          <ArrowRight className="size-4" aria-hidden />
+        </button>
       </div>
+      <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+        {acceptanceReason || "Trip acceptance, invites, and participants are intentionally deferred."}
+      </p>
     </div>
   )
 }

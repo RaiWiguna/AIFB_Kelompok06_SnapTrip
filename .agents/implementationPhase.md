@@ -293,7 +293,14 @@ Current implementation notes:
   - Public accepted trip details are anonymous-readable; private and invite-only trip details remain owner-only until participant access is implemented later.
   - `/trips/[id]`, `/trips/[id]/memo`, `/trips/[id]/itinerary`, `/trips/[id]/destinations`, and `/trips/[id]/budget` now read backend detail data through frontend adapters.
   - `TripRouteMap` renders Google Maps JavaScript API markers when a browser-restricted `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY` and backend coordinates exist, and otherwise keeps the static route map fallback for local/test runs.
-- Planner preview promotion, E2E coverage, and deployment remain pending.
+- Planner preview boundary and integration cleanup are implemented in repo terms:
+  - `GET /api/planner-preview/{trip_creation_session_id}` returns owner-only deterministic preview data from selected recommendations without persisting official planner documents or accepted Trip Plans.
+  - `/plan/[id]`, `/plan/[id]/memo`, `/plan/[id]/itinerary`, and `/plan/[id]/budget` now use backend planner preview data through frontend adapters.
+  - Scripted planner chat remains demo-only and isolated from backend planner state until Phase 11.
+  - Fake acceptance behavior is quarantined; `/new/review` and `/plan/[id]/accepted` now communicate the deferred boundary instead of pretending acceptance exists.
+  - `/trips` now reads backend account summary data.
+  - Playwright smoke coverage now exercises signup, category confirmation, deterministic recommendations, selected destination persistence, and planner preview rendering.
+- Broader integrated product E2E coverage and deployment remain pending.
 
 ## 12. Phase 8 - Merged into Phase 7
 

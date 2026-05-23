@@ -1,4 +1,4 @@
-import Image from "next/image"
+﻿import Image from "next/image"
 import {
   ArrowRight,
   ArrowUp,
@@ -18,13 +18,34 @@ import {
 } from "lucide-react"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
-import { IMG, PLAN_DRAFT } from "@/lib/data"
+
+const PREVIEW_DRAFT = {
+  title: "Planner preview",
+  memo: [
+    "/landing/diamond-beach.png",
+    "/landing/bali-coastal-pano.png",
+    "/landing/bromo-tengger.png",
+    "/landing/bali-woman-temple.png",
+  ],
+  itinerary: [
+    { day: 1, name: "Selected stop", note: "Generated from saved recommendations" },
+    { day: 2, name: "Route preview", note: "Draft itinerary only" },
+    { day: 3, name: "Budget review", note: "Acceptance remains deferred" },
+  ],
+  budget: {
+    total: "Preview only",
+    perPerson: "Not accepted",
+    accommodation: "Estimated",
+    activities: "Estimated",
+    meals: "Estimated",
+  },
+}
 
 export default function PlanPage() {
   return (
     <div className="relative flex min-h-screen flex-col bg-background text-foreground">
       <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[700px] opacity-40">
-        <Image src={IMG.baliCoastalPano || "/placeholder.svg"} alt="" fill sizes="100vw" className="object-cover" />
+        <Image src="/landing/bali-coastal-pano.png" alt="" fill sizes="100vw" className="object-cover" />
         <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/85 to-background" />
       </div>
 
@@ -42,7 +63,7 @@ export default function PlanPage() {
               <br /> anything.
             </h1>
             <p className="mt-6 max-w-md text-[15px] leading-relaxed text-foreground/75">
-              Revise the plan through conversation while the memo, itinerary, and budget stay organized.
+              Open a planner preview after selecting recommendations. Acceptance and sharing stay deferred.
             </p>
 
             {/* Step rail */}
@@ -61,7 +82,7 @@ export default function PlanPage() {
                 <Lock className="size-4" aria-hidden />
               </span>
               <div>
-                <p className="text-[13px] font-medium">Your plan is private until you share.</p>
+                <p className="text-[13px] font-medium">Preview data is not persisted as an accepted trip.</p>
               </div>
             </div>
           </div>
@@ -70,7 +91,7 @@ export default function PlanPage() {
           <div className="rounded-3xl bg-card p-5 ring-1 ring-border/70 shadow-[0_30px_80px_-30px_rgba(29,36,32,0.35)] md:p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="font-display text-[22px] tracking-tight text-foreground">{PLAN_DRAFT.title}</span>
+                <span className="font-display text-[22px] tracking-tight text-foreground">{PREVIEW_DRAFT.title}</span>
                 <ChevronDown className="size-4 text-muted-foreground" aria-hidden />
                 <span className="ml-1 inline-flex items-center rounded-full bg-soft-accent/35 px-2.5 py-0.5 text-[11.5px] font-medium text-accent">
                   Draft
@@ -82,10 +103,18 @@ export default function PlanPage() {
                   <Avatar src="https://api.dicebear.com/7.x/notionists/svg?seed=A&backgroundColor=ece7dd" />
                   <Avatar src="https://api.dicebear.com/7.x/notionists/svg?seed=B&backgroundColor=ece7dd" />
                 </div>
-                <button className="grid size-7 place-items-center rounded-full bg-secondary text-foreground/70 ring-1 ring-border">
+                <button
+                  type="button"
+                  disabled
+                  className="grid size-7 cursor-not-allowed place-items-center rounded-full bg-secondary text-muted-foreground ring-1 ring-border"
+                >
                   <span className="text-[14px] leading-none">+</span>
                 </button>
-                <button className="inline-flex items-center gap-2 rounded-full bg-secondary px-3.5 py-1.5 text-[12.5px] font-medium ring-1 ring-border">
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex cursor-not-allowed items-center gap-2 rounded-full bg-secondary px-3.5 py-1.5 text-[12.5px] font-medium text-muted-foreground ring-1 ring-border"
+                >
                   <Share2 className="size-3.5" aria-hidden />
                   Share
                 </button>
@@ -104,7 +133,7 @@ export default function PlanPage() {
                     Trip Memo
                   </div>
                   <div className="grid grid-cols-4 gap-2">
-                    {PLAN_DRAFT.memo.map((src, i) => (
+                    {PREVIEW_DRAFT.memo.map((src, i) => (
                       <div key={i} className="relative aspect-square overflow-hidden rounded-xl ring-1 ring-black/5">
                         <Image src={src || "/placeholder.svg"} alt="" fill sizes="80px" className="object-cover" />
                       </div>
@@ -129,7 +158,7 @@ export default function PlanPage() {
                     Full Itinerary
                   </div>
                   <ul className="divide-y divide-border/70">
-                    {PLAN_DRAFT.itinerary.map((d) => (
+                    {PREVIEW_DRAFT.itinerary.map((d) => (
                       <li key={d.day} className="flex items-center gap-3 py-2.5">
                         <div className="grid w-10 text-center font-mono text-[10.5px] uppercase tracking-wider text-muted-foreground">
                           <span>Day</span>
@@ -144,8 +173,8 @@ export default function PlanPage() {
                     ))}
                   </ul>
                   <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-3">
-                    <button className="text-[12.5px] text-muted-foreground hover:text-primary">+ Add day</button>
-                    <button className="inline-flex items-center gap-1 text-[12.5px] font-medium text-primary">
+                    <button className="text-[12.5px] text-muted-foreground" disabled>+ Add day</button>
+                    <button className="inline-flex items-center gap-1 text-[12.5px] font-medium text-muted-foreground" disabled>
                       View full itinerary <ArrowRight className="size-3.5" aria-hidden />
                     </button>
                   </div>
@@ -157,14 +186,14 @@ export default function PlanPage() {
                     Budget Plan
                   </div>
                   <div className="space-y-1.5 text-[13px]">
-                    <Row label="Estimated total" value={PLAN_DRAFT.budget.total} bold />
-                    <Row label="Per person" value={PLAN_DRAFT.budget.perPerson} bold />
+                    <Row label="Estimated total" value={PREVIEW_DRAFT.budget.total} bold />
+                    <Row label="Per person" value={PREVIEW_DRAFT.budget.perPerson} bold />
                     <div className="my-2 border-t border-border/70" />
-                    <Row label="Accommodation" value={PLAN_DRAFT.budget.accommodation} muted />
-                    <Row label="Activities & Transport" value={PLAN_DRAFT.budget.activities} muted />
-                    <Row label="Meals & Other" value={PLAN_DRAFT.budget.meals} muted />
+                    <Row label="Accommodation" value={PREVIEW_DRAFT.budget.accommodation} muted />
+                    <Row label="Activities & Transport" value={PREVIEW_DRAFT.budget.activities} muted />
+                    <Row label="Meals & Other" value={PREVIEW_DRAFT.budget.meals} muted />
                   </div>
-                  <button className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-medium text-primary">
+                  <button className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-medium text-muted-foreground" disabled>
                     View full budget <ArrowRight className="size-3.5" aria-hidden />
                   </button>
                 </div>

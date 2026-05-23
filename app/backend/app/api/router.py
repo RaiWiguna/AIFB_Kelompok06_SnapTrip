@@ -9,6 +9,7 @@ from app.api import (
     health,
     images,
     likes,
+    planner_preview,
     recommendations,
     seeds,
     trip_creation,
@@ -25,6 +26,7 @@ api_router.include_router(trip_plans.router, prefix="/trip-plans", tags=["trip-p
 api_router.include_router(likes.router, prefix="/likes", tags=["likes"])
 api_router.include_router(collections.router, prefix="/collections", tags=["collections"])
 api_router.include_router(trip_creation.router, prefix="/trip-creation-sessions", tags=["trip-creation"])
+api_router.include_router(planner_preview.router, prefix="/planner-preview", tags=["planner-preview"])
 api_router.include_router(images.router, prefix="/images", tags=["images"])
 api_router.include_router(seeds.router, prefix="/destination-seeds", tags=["destination-seeds"])
 api_router.include_router(recommendations.router, tags=["recommendations"])
