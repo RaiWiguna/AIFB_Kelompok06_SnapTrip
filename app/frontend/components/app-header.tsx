@@ -4,7 +4,7 @@ import { SnapTripMark } from "./snaptrip-logo"
 import { cn } from "@/lib/utils"
 
 export type AppHeaderActive = "explore" | "new" | "collections" | "trips" | "plan" | "account"
-export type AppHeaderUser = { name: string; email: string; initials: string }
+export type AppHeaderUser = { id?: string; name: string; email: string; initials: string }
 
 /**
  * Authenticated workspace header.

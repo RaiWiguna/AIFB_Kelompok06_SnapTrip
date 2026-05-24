@@ -47,7 +47,6 @@ export default async function TripDetailPage({
 }) {
   const { id } = await params
   const { as } = await searchParams
-  const isOwnerView = as === "owner"
   const cookieHeader = (await cookies()).toString()
   let trip
   try {
@@ -62,6 +61,7 @@ export default async function TripDetailPage({
   const detail = trip.detail
   const detailFull = trip.detail
   const exploreHref = headerUser ? "/explore?as=user" : "/explore"
+  const isOwnerView = as === "owner" && headerUser?.id === t.ownerId
 
   const galleryThumbs = detail.galleryThumbs.slice(0, 6)
 
@@ -87,8 +87,7 @@ export default async function TripDetailPage({
             </nav>
 
             <h1 className="mt-5 font-display text-[clamp(2.2rem,3.6vw,3.4rem)] leading-[1.04] tracking-[-0.02em] text-primary text-balance">
-              Bali&apos;s Volcanic
-              <br /> Coast Road Trip
+              {t.title}
             </h1>
 
             <p className="mt-4 max-w-md text-[14.5px] leading-relaxed text-foreground/75">{t.description}</p>
@@ -319,9 +318,7 @@ export default async function TripDetailPage({
             </div>
 
             <p className="mt-4 line-clamp-5 text-[12.5px] leading-relaxed text-foreground/75">
-              This road trip captures the best of Bali&apos;s natural beauty and local culture. We&apos;ll explore
-              volcanic highlands, sacred temples, hidden waterfalls, and dramatic coastal roads. Perfect for travelers
-              who love scenic drives, light adventures, and meaningful experiences.
+              {detail.memoCaption || t.description}
             </p>
 
             <div className="mt-4 flex items-center justify-between gap-3">
@@ -372,9 +369,9 @@ export default async function TripDetailPage({
               <div className="md:col-span-5">
                 <TripOwnerControls
                   tripId={id}
-                  visibility="invite"
-                  invitesActive={2}
-                  isPublished={false}
+                  plannerSessionId={t.plannerSessionId}
+                  visibility={t.visibility}
+                  invitesActive={Math.max(detailFull.participants.length - 1, 0)}
                 />
               </div>
               <div className="md:col-span-7">

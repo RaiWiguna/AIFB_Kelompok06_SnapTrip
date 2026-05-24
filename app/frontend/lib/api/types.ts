@@ -250,6 +250,7 @@ export type BackendTripDetail = {
     budget_total: string
     visibility: "private" | "invite_only" | "public"
     status: "draft" | "accepted"
+    planner_session_id?: string | null
   }
   gallery: {
     thumbs: { src: string; alt: string }[]

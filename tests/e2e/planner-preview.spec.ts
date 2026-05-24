@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { API_BASE } from "./helpers";
+import { API_BASE, signupViaApi } from "./helpers";
 
 test("opens agentic planner from one selected recommendation", async ({ page }) => {
   const email = `planner-${Date.now()}@example.com`;
@@ -58,4 +58,26 @@ test("opens agentic planner from one selected recommendation", async ({ page }) 
   await expect(page).toHaveURL(new RegExp(`/plan/${plannerId}$`));
   await expect(page.getByRole("heading", { name: /review and accept your plan/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /accept plan/i })).toBeEnabled();
+
+  await page.getByRole("button", { name: /accept plan/i }).click();
+  await expect(page).toHaveURL(/\/trips\/trip_[^?]+\?as=owner/);
+  const tripPlanId = new URL(page.url()).pathname.split("/").pop();
+  expect(tripPlanId).toBeTruthy();
+  await expect(page.getByRole("heading", { name: "Pantai Kuta trip" })).toBeVisible();
+
+  await page.goto("/trips");
+  await page.locator(`a[href="/trips/${tripPlanId}?as=owner"]`).click();
+  await expect(page.getByRole("heading", { name: "Pantai Kuta trip" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Publish" }).click();
+  await expect(page.getByText("Discoverable in Explore.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Unpublish" })).toBeVisible();
+
+  await page.context().clearCookies();
+  await signupViaApi(page, "planner-public-viewer");
+  await page.goto("/explore?as=user");
+  const exploreTrip = page.locator(`a[href="/trips/${tripPlanId}"]`).filter({ hasText: "Pantai Kuta trip" });
+  await expect(exploreTrip).toBeVisible();
+  await exploreTrip.click();
+  await expect(page.getByRole("heading", { name: "Pantai Kuta trip" })).toBeVisible();
 });

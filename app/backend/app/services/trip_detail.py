@@ -46,6 +46,7 @@ async def trip_detail_display(
     memo = plan.get("memo") or synthesize_memo(plan, destinations)
     gallery = plan.get("gallery") or synthesize_gallery(plan, destinations)
     owner = await owner_display(store, plan["owner_id"])
+    participants = await trip_participants(store, plan, owner)
 
     return {
         "trip_plan": {
@@ -64,6 +65,7 @@ async def trip_detail_display(
             "budget_total": plan.get("budget_total_label") or format_idr(plan.get("estimated_budget_idr")),
             "visibility": plan.get("visibility", "private"),
             "status": plan.get("status", "draft"),
+            "planner_session_id": plan.get("planner_session_id"),
             "owner_display": owner,
         },
         "gallery": gallery,
@@ -76,7 +78,7 @@ async def trip_detail_display(
             "total_amount": plan.get("budget_total_label") or format_idr(plan.get("estimated_budget_idr")),
             "total_label": f"per person - {card['duration_days']} days",
         },
-        "participants": owner_participants(owner),
+        "participants": participants,
     }
 
 
@@ -312,18 +314,26 @@ def synthesize_gallery(plan: dict[str, Any], destinations: list[dict[str, Any]])
     return {"thumbs": thumbs[:6], "more": max(len(destinations) - 6, 0)}
 
 
-def owner_participants(owner: dict[str, Any]) -> list[dict[str, Any]]:
-    return [
-        {
-            "id": owner["id"],
-            "name": owner["name"],
-            "handle": "owner",
-            "avatar": owner["avatar_url"],
-            "role": "Owner",
-            "status": "active",
-            "joinedLabel": "Owner",
-        }
-    ]
+async def trip_participants(store, plan: dict[str, Any], owner: dict[str, Any]) -> list[dict[str, Any]]:
+    stored = await store.list_docs("tripParticipants", trip_plan_id=plan["id"])
+    if not stored:
+        stored = [{"user_id": plan["owner_id"], "role": "owner", "status": "active"}]
+    rows = []
+    for participant in sorted(stored, key=lambda item: 0 if item.get("role") == "owner" else 1):
+        user = await store.find_one("users", id=participant["user_id"])
+        name = (user or {}).get("display_name") or owner["name"]
+        rows.append(
+            {
+                "id": participant["user_id"],
+                "name": name,
+                "handle": "owner" if participant.get("role") == "owner" else "viewer",
+                "avatar": f"https://api.dicebear.com/7.x/notionists/svg?seed={name}",
+                "role": "Owner" if participant.get("role") == "owner" else "Viewer",
+                "status": participant.get("status", "active"),
+                "joinedLabel": "Owner" if participant.get("role") == "owner" else "Joined",
+            }
+        )
+    return rows
 
 
 def summary_description(plan: dict[str, Any], destinations: list[dict[str, Any]]) -> str:

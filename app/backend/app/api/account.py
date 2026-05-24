@@ -10,6 +10,12 @@ router = APIRouter()
 @router.get("/summary")
 async def account_summary(store=Depends(get_store), user=Depends(require_user)):
     owned_plans = await store.list_docs("tripPlans", owner_id=user["id"])
+    joined_participants = await store.list_docs("tripParticipants", user_id=user["id"], role="viewer", status="active")
+    joined_plans = []
+    for participant in joined_participants:
+        plan = await store.find_one("tripPlans", id=participant["trip_plan_id"], status="accepted")
+        if plan:
+            joined_plans.append(plan)
     collections = await store.list_docs("collections", owner_id=user["id"])
     likes = await store.list_docs("likes", user_id=user["id"])
     recent_owned = sorted(
@@ -27,13 +33,30 @@ async def account_summary(store=Depends(get_store), user=Depends(require_user)):
         },
         "stats": {
             "owned_trips": len(owned_plans),
-            "joined_trips": 0,
+            "joined_trips": len(joined_plans),
             "collections": len(collections),
             "liked_trips": len(likes),
         },
         "recent_owned_trips": [
-            await my_trip_display(plan, owner_name=owner_name, joined_as="owner")
+            await my_trip_display(
+                {
+                    **plan,
+                    "participant_count": len(await store.list_docs("tripParticipants", trip_plan_id=plan["id"])),
+                },
+                owner_name=owner_name,
+                joined_as="owner",
+            )
             for plan in recent_owned
         ],
-        "joined_trips": [],
+        "joined_trips": [
+            await my_trip_display(
+                {
+                    **plan,
+                    "participant_count": len(await store.list_docs("tripParticipants", trip_plan_id=plan["id"])),
+                },
+                owner_name=(await store.find_one("users", id=plan["owner_id"]) or {}).get("display_name", "SnapTrip traveler"),
+                joined_as="viewer",
+            )
+            for plan in sorted(joined_plans, key=lambda item: item.get("updated_at") or item.get("created_at"), reverse=True)[:3]
+        ],
     }

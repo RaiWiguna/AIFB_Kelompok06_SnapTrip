@@ -368,7 +368,7 @@ export function PlannerWorkspace(props: PlannerWorkspaceProps) {
                         setError("")
                         try {
                           const accepted = await acceptPlannerSession(planner.sessionId, visibility)
-                          router.push(`/trips/${accepted.trip_plan.id}`)
+                          router.push(`/trips/${accepted.trip_plan.id}?as=owner`)
                         } catch (err) {
                           setError(err instanceof Error ? err.message : "Could not accept planner session")
                           setPhase("plan")

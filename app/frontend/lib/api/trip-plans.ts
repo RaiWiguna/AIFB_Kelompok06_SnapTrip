@@ -13,3 +13,16 @@ export async function getTripPlanDetail(tripPlanId: string, cookieHeader?: strin
   )
   return adaptTripDetail(body.detail)
 }
+
+export async function updateTripVisibility(
+  tripPlanId: string,
+  visibility: "private" | "invite_only" | "public",
+) {
+  return apiFetch<{ trip_plan: { id: string; visibility: "private" | "invite_only" | "public" } }>(
+    `/api/trip-plans/${encodeURIComponent(tripPlanId)}/visibility`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ visibility }),
+    },
+  )
+}

@@ -176,6 +176,10 @@ async def test_planner_accept_invite_join_and_revoke(client):
     joined = client.post(f"/api/planner-sessions/invites/{token}/join")
     assert joined.status_code == 200
     assert joined.json()["participant"]["role"] == "viewer"
+    assert client.get(f"/api/trip-plans/{plan['id']}/detail").status_code == 200
+    joined_summary = client.get("/api/account/summary")
+    assert joined_summary.status_code == 200
+    assert plan["id"] in [item["id"] for item in joined_summary.json()["joined_trips"]]
 
     client.post("/api/auth/logout")
     login = client.post(
@@ -186,3 +190,32 @@ async def test_planner_accept_invite_join_and_revoke(client):
     revoked = client.post(f"/api/planner-sessions/invites/{invite.json()['invite']['id']}/revoke")
     assert revoked.status_code == 200
     assert revoked.json()["invite"]["status"] == "revoked"
+
+
+@pytest.mark.asyncio
+async def test_accepted_trip_can_be_published_to_explore_and_opened_by_other_user(client):
+    owner = signup(client, "planner-publisher@example.com")
+    session, item = await create_planner_seed(client, owner["id"])
+    planner = client.post(
+        f"/api/planner-sessions/from-trip-creation/{session['id']}",
+        json=planner_payload(item["id"]),
+    ).json()["session"]
+    accepted = client.post(f"/api/planner-sessions/{planner['id']}/accept", json={"visibility": "private"})
+    assert accepted.status_code == 200
+    plan = accepted.json()["trip_plan"]
+
+    private_explore = client.get("/api/explore")
+    assert plan["id"] not in [item["id"] for item in private_explore.json()["items"]]
+
+    published = client.patch(f"/api/trip-plans/{plan['id']}/visibility", json={"visibility": "public"})
+    assert published.status_code == 200
+    assert published.json()["trip_plan"]["visibility"] == "public"
+
+    public_explore = client.get("/api/explore")
+    assert plan["id"] in [item["id"] for item in public_explore.json()["items"]]
+
+    client.post("/api/auth/logout")
+    signup(client, "planner-public-viewer@example.com")
+    detail = client.get(f"/api/trip-plans/{plan['id']}/detail")
+    assert detail.status_code == 200
+    assert detail.json()["detail"]["trip_plan"]["title"] == "Pantai Kuta trip"
