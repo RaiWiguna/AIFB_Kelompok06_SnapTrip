@@ -39,8 +39,8 @@ export function ReviewPanel({
   const canAccept = Boolean(acceptanceEnabled) && memoOk && itineraryOk && budgetOk
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 pr-1">
-      <header>
+    <div className="flex h-full min-h-0 flex-col gap-3 pr-1">
+      <header className="shrink-0">
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-accent">Step 5 · Final review</div>
         <h2 className="mt-2 font-display text-[22px] tracking-tight text-primary">
           Review and accept your plan
@@ -50,6 +50,7 @@ export function ReviewPanel({
         </p>
       </header>
 
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
       <ul className="space-y-2.5">
         <DocCheckRow
           title="Trip Memo"
@@ -85,7 +86,7 @@ export function ReviewPanel({
         />
       </ul>
 
-      <section className="rounded-2xl bg-secondary/60 p-4 ring-1 ring-border/70">
+      <section className="mt-3 rounded-2xl bg-secondary/60 p-4 ring-1 ring-border/70">
         <p className="text-[12.5px] font-medium text-foreground">Visibility</p>
         <div className="mt-2 space-y-2">
           <VisibilityOption
@@ -111,8 +112,9 @@ export function ReviewPanel({
           />
         </div>
       </section>
+      </div>
 
-      <div className="mt-auto flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2 border-t border-border/60 pt-3">
         <button
           type="button"
           onClick={onBack}
