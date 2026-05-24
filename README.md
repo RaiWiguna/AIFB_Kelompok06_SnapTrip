@@ -12,22 +12,10 @@ The MVP includes:
 - Structured Trip Memo, Full Itinerary, and Budget Plan documents.
 - Share invite links and participant visibility.
 
-## Source of Truth
-
-The canonical product and implementation documents live in `.agents/`:
-
-- `.agents/PRD.md`
-- `.agents/implementationPhase.md`
-- `.agents/rules.md`
-- `.agents/sessionHandoff.md`
-
-Earlier drafts and old README assumptions are annulled when they conflict with `.agents/PRD.md`.
-
 ## Repository Layout
 
 ```text
 .
-|-- .agents/
 |-- .github/
 |   `-- workflows/
 |-- app/
@@ -136,7 +124,6 @@ Production deployment uses:
 
 Root `docker-compose.yml` is local development only.
 
-See `.agents/deploymentGuide.md` for VM bootstrap, GitHub Secrets, deploy, and rollback instructions.
 
 ## Contributing
 
