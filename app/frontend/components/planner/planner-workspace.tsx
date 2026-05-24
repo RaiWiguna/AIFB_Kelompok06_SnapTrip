@@ -2,6 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion"
 import {
   ArrowRight,
@@ -20,16 +21,18 @@ import {
   Wallet,
   X,
 } from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AgentTimeline } from "@/components/planner/agent-timeline"
 import { ChatComposer } from "@/components/planner/chat-composer"
 import { ReviewPanel } from "@/components/planner/review-panel"
-import { type AgentPatch, type ChatTurn, pickFlow, SUGGESTED_PROMPTS } from "@/lib/planner-demo"
-import type { PlannerWorkspaceInitialState } from "@/lib/api/types"
+import { acceptPlannerSession, getPlannerSession, sendPlannerMessage } from "@/lib/api/planner-sessions"
+import type { PlannerSessionDisplay, PlannerWorkspaceInitialState } from "@/lib/api/types"
+import { plannerTimeline } from "@/lib/planner-events"
 
 type PlannerWorkspaceProps = {
-  tripId: string
-  title: string
+  initialPlanner?: PlannerSessionDisplay
+  tripId?: string
+  title?: string
   initialState?: PlannerWorkspaceInitialState
   acceptanceReason?: string
 }
@@ -48,20 +51,20 @@ const EMPTY_STATE: WorkspaceState = {
 
 type Phase = "plan" | "review"
 
-export function PlannerWorkspace({ tripId, title, initialState, acceptanceReason }: PlannerWorkspaceProps) {
+export function PlannerWorkspace(props: PlannerWorkspaceProps) {
+  const initialPlanner = props.initialPlanner ?? legacyPlannerFromProps(props)
+  const router = useRouter()
   const [phase, setPhase] = useState<Phase>("plan")
-  const [runs, setRuns] = useState<ChatTurn[]>([])
-  const [state, setState] = useState<WorkspaceState>(initialState ?? EMPTY_STATE)
-  const [isRunning, setIsRunning] = useState(false)
-  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  const [planner, setPlanner] = useState(initialPlanner)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState("")
   const scrollerRef = useRef<HTMLDivElement | null>(null)
-
-  // Cleanup pending step timers on unmount.
-  useEffect(() => {
-    return () => {
-      timersRef.current.forEach(clearTimeout)
-    }
-  }, [])
+  const state: WorkspaceState = planner.workspace ?? EMPTY_STATE
+  const runs = useMemo(() => plannerTimeline(planner.messages, planner.events), [planner.events, planner.messages])
+  const isRunning = planner.status === "working" || isSubmitting
+  const title = planner.title
+  const tripId = planner.sessionId
+  const acceptanceReason = planner.acceptance.reason
 
   // Auto-scroll the chat as runs progress.
   useEffect(() => {
@@ -70,100 +73,41 @@ export function PlannerWorkspace({ tripId, title, initialState, acceptanceReason
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
   }, [runs])
 
-  const applyPatch = useCallback((patch: AgentPatch) => {
-    setState((s) => {
-      if (patch.target === "memo") {
-        return {
-          ...s,
-          memoCaption: patch.caption ?? s.memoCaption,
-          memoItemCount: patch.itemCount ?? s.memoItemCount,
-          memoTiles: patch.tiles ?? s.memoTiles,
-        }
-      }
-      if (patch.target === "itinerary") {
-        const next = [...s.itineraryDays]
-        const i = next.findIndex((d) => d.day === patch.day)
-        const entry = { day: patch.day, name: patch.name, note: patch.note }
-        if (i === -1) next.push(entry)
-        else next[i] = entry
-        next.sort((a, b) => a.day - b.day)
-        return { ...s, itineraryDays: next }
-      }
-      // budget
-      return {
-        ...s,
-        budget: {
-          total: patch.total,
-          perPerson: patch.perPerson,
-          accommodation: patch.accommodation,
-          activities: patch.activities,
-          meals: patch.meals,
-        },
-      }
-    })
-  }, [])
-
   const sendMessage = useCallback(
-    (text: string) => {
+    async (text: string) => {
       if (isRunning) return
-      const isEmpty = state.itineraryDays.length === 0 && !state.budget && state.memoTiles.length === 0
-      const flow = pickFlow(text, isEmpty)
-
-      const userTurn: ChatTurn = { id: `u-${Date.now()}`, role: "user", text }
-      const runId = `r-${Date.now()}`
-      const runTurn: ChatTurn = {
-        id: runId,
-        role: "agent-run",
-        activeIndex: 0,
-        done: false,
-        steps: flow.steps,
-        summary: flow.summary,
+      setError("")
+      setIsSubmitting(true)
+      try {
+        setPlanner(await sendPlannerMessage(planner.sessionId, text))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not send planner message")
+      } finally {
+        setIsSubmitting(false)
       }
-
-      setRuns((r) => [...r, userTurn, runTurn])
-      setIsRunning(true)
-
-      // Schedule each step.
-      let cumulative = 0
-      flow.steps.forEach((step, i) => {
-        cumulative += step.durationMs
-        const t = setTimeout(() => {
-          // Apply patch when the step settles.
-          if (step.patch) applyPatch(step.patch)
-
-          setRuns((r) =>
-            r.map((turn) => {
-              if (turn.id !== runId || turn.role !== "agent-run") return turn
-              const isLast = i === flow.steps.length - 1
-              return {
-                ...turn,
-                activeIndex: isLast ? i : i + 1,
-                done: isLast,
-              }
-            }),
-          )
-
-          if (i === flow.steps.length - 1) {
-            setIsRunning(false)
-          }
-        }, cumulative)
-        timersRef.current.push(t)
-      })
     },
-    [applyPatch, isRunning, state.budget, state.itineraryDays.length, state.memoTiles.length],
+    [isRunning, planner.sessionId],
   )
 
-  const resetSession = useCallback(() => {
-    timersRef.current.forEach(clearTimeout)
-    timersRef.current = []
-    setIsRunning(false)
-    setRuns([])
-    setState(initialState ?? EMPTY_STATE)
-  }, [initialState])
+  const refreshSession = useCallback(async () => {
+    setError("")
+    try {
+      setPlanner(await getPlannerSession(planner.sessionId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not refresh planner session")
+    }
+  }, [planner.sessionId])
+
+  useEffect(() => {
+    if (planner.status !== "working") return
+    const timer = window.setInterval(() => {
+      void refreshSession()
+    }, 1600)
+    return () => window.clearInterval(timer)
+  }, [planner.status, refreshSession])
 
   const isEmpty = runs.length === 0
-  const canReview =
-    state.itineraryDays.length > 0 || state.budget !== null || state.memoTiles.length > 0
+  const canReview = planner.acceptance.enabled
 
   return (
     <LayoutGroup>
@@ -255,7 +199,7 @@ export function PlannerWorkspace({ tripId, title, initialState, acceptanceReason
                     ? "inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-[12.5px] font-medium text-primary-foreground hover:bg-[#0b2a25]"
                     : "inline-flex items-center gap-1.5 rounded-full bg-secondary px-4 py-2 text-[12.5px] font-medium text-muted-foreground ring-1 ring-border"
                 }
-                title={canReview ? "" : "Send a message to the assistant first"}
+                title={canReview ? "" : acceptanceReason}
               >
                 Continue to review <ArrowRight className="size-3.5" aria-hidden />
               </button>
@@ -356,15 +300,15 @@ export function PlannerWorkspace({ tripId, title, initialState, acceptanceReason
                           Plan Assistant <Sparkles className="size-3 text-accent" aria-hidden />
                         </div>
                         <div className="text-[11.5px] text-muted-foreground">
-                          {isRunning ? "Working on your plan…" : "Here to help you refine every detail."}
+                          {isRunning ? "Working on your plan..." : statusLabel(planner.status)}
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
                       <button
-                        aria-label="Reset"
-                        onClick={resetSession}
-                        disabled={isEmpty}
+                        aria-label="Refresh planner session"
+                        onClick={refreshSession}
+                        disabled={isRunning}
                         className="grid size-7 place-items-center rounded-full text-muted-foreground hover:bg-card disabled:opacity-40"
                       >
                         <RotateCcw className="size-3.5" aria-hidden />
@@ -379,8 +323,13 @@ export function PlannerWorkspace({ tripId, title, initialState, acceptanceReason
                   </div>
 
                   <div ref={scrollerRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+                    {error ? (
+                      <div className="rounded-2xl bg-[color:var(--color-sunset-wash)]/35 px-3 py-2 text-[12.5px] text-[color:var(--color-warning)] ring-1 ring-border">
+                        {error}
+                      </div>
+                    ) : null}
                     {isEmpty ? (
-                      <EmptyChatState onPick={sendMessage} />
+                      <EmptyChatState />
                     ) : (
                       <AgentTimeline runs={runs} />
                     )}
@@ -406,6 +355,7 @@ export function PlannerWorkspace({ tripId, title, initialState, acceptanceReason
                   >
                     <ReviewPanel
                       acceptanceReason={acceptanceReason}
+                      acceptanceEnabled={planner.acceptance.enabled}
                       state={{
                         memoCaption: state.memoCaption,
                         memoItemCount: state.memoItemCount,
@@ -414,6 +364,16 @@ export function PlannerWorkspace({ tripId, title, initialState, acceptanceReason
                         budget: state.budget,
                       }}
                       onBack={() => setPhase("plan")}
+                      onAccept={async (visibility) => {
+                        setError("")
+                        try {
+                          const accepted = await acceptPlannerSession(planner.sessionId, visibility)
+                          router.push(`/trips/${accepted.trip_plan.id}?as=owner`)
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : "Could not accept planner session")
+                          setPhase("plan")
+                        }
+                      }}
                     />
                   </motion.div>
                 )}
@@ -568,34 +528,72 @@ function Row({ label, value, muted, bold }: { label: string; value: string; mute
   )
 }
 
-function EmptyChatState({ onPick }: { onPick: (text: string) => void }) {
+function EmptyChatState() {
   return (
-    <div className="flex flex-1 flex-col items-start justify-center gap-4 py-6">
+    <div className="flex flex-1 flex-col items-start justify-center gap-3 py-6">
       <div className="flex items-center gap-2">
         <span className="grid size-8 place-items-center rounded-full bg-primary text-primary-foreground">
           <Sparkles className="size-4" aria-hidden />
         </span>
         <div>
-          <div className="text-[14px] font-semibold">Hi, I&apos;m your Plan Assistant.</div>
-          <div className="text-[12.5px] text-muted-foreground">
-            Ask anything to start. I&apos;ll draft the memo, itinerary, and budget as we chat.
-          </div>
+          <div className="text-[14px] font-semibold">Planner run is being prepared.</div>
+          <div className="text-[12.5px] text-muted-foreground">The initial trip request is sent automatically.</div>
         </div>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {SUGGESTED_PROMPTS.map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => onPick(p)}
-            className="rounded-full bg-card px-3 py-1.5 text-[12.5px] text-foreground/85 ring-1 ring-border/70 transition hover:bg-secondary hover:text-foreground"
-          >
-            {p}
-          </button>
-        ))}
       </div>
     </div>
   )
+}
+
+function statusLabel(status: string) {
+  return {
+    idle: "Idle",
+    working: "Working",
+    needs_input: "Needs your input",
+    ready_to_review: "Ready to review",
+    interrupted: "Interrupted",
+    accepted: "Accepted",
+  }[status] ?? "Idle"
+}
+
+function legacyPlannerFromProps(props: PlannerWorkspaceProps): PlannerSessionDisplay {
+  const workspace = props.initialState ?? EMPTY_STATE
+  return {
+    sessionId: props.tripId ?? "planner",
+    title: props.title ?? "Trip planner",
+    status: "needs_input",
+    categories: [],
+    documentsPersisted: false,
+    documentNote: props.acceptanceReason ?? "Planner documents are incomplete.",
+    acceptance: {
+      enabled: false,
+      reason: props.acceptanceReason ?? "Planner documents are incomplete.",
+    },
+    detail: {
+      id: props.tripId ?? "planner",
+      itinerary: [],
+      destinations: [],
+      budgetCategories: [],
+      budgetDaily: [],
+      memoMarkdown: "",
+      memoCaption: workspace.memoCaption ?? "",
+      memoSource: "Planner",
+      memoItems: workspace.memoItemCount,
+      memoTiles: workspace.memoTiles,
+      galleryThumbs: [],
+      galleryMore: 0,
+      participants: [],
+    },
+    budgetTotalAmount: workspace.budget?.total ?? "Budget TBD",
+    budgetTotalLabel: "",
+    workspace,
+    messages: [],
+    events: [],
+    ready: false,
+    acceptedTripPlanId: null,
+    travelStartDate: "",
+    travelEndDate: "",
+    travelerCount: 0,
+  }
 }
 
 function RailStep({ icon, label, active }: { icon: React.ReactNode; label: string; active?: boolean }) {

@@ -14,6 +14,7 @@ export async function getCookieHeader() {
 export async function getAppHeaderUser(cookieHeader?: string): Promise<AppHeaderUser> {
   const user = await getCurrentUser(cookieHeader ?? await getCookieHeader())
   return {
+    id: user.id,
     name: user.displayName,
     email: user.email,
     initials: user.initials,

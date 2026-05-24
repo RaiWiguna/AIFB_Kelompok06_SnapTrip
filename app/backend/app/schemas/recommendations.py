@@ -164,4 +164,4 @@ class RecommendationRunOutputV1(BaseModel):
 
 
 class SelectedRecommendationsRequest(BaseModel):
-    recommendation_item_ids: list[str] = Field(min_length=1)
+    recommendation_item_ids: list[str] = Field(min_length=1, max_length=1)

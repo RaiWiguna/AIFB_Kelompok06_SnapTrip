@@ -56,6 +56,15 @@ class MemoryStore(BaseStore):
                 "recommendationRuns",
                 "recommendationItems",
                 "aiObservabilityEvents",
+                "plannerSessions",
+                "plannerMessages",
+                "plannerRuns",
+                "plannerEvents",
+                "plannerDocuments",
+                "plannerDocumentVersions",
+                "plannerResearchFacts",
+                "tripParticipants",
+                "shareInvites",
             )
         }
         self.gridfs: dict[str, bytes] = {}
@@ -165,6 +174,17 @@ class MongoStore(BaseStore):
         await self.db.aiObservabilityEvents.create_index([("expires_at", ASCENDING)], expireAfterSeconds=0)
         await self.db.aiObservabilityEvents.create_index([("trace_id", ASCENDING)])
         await self.db.aiObservabilityEvents.create_index([("session_id", ASCENDING), ("owner_id", ASCENDING)])
+        await self.db.plannerSessions.create_index([("owner_id", ASCENDING), ("trip_creation_session_id", ASCENDING)])
+        await self.db.plannerMessages.create_index([("planner_session_id", ASCENDING), ("sequence", ASCENDING)])
+        await self.db.plannerRuns.create_index([("planner_session_id", ASCENDING), ("created_at", ASCENDING)])
+        await self.db.plannerEvents.create_index([("planner_session_id", ASCENDING), ("sequence", ASCENDING)])
+        await self.db.plannerDocuments.create_index([("planner_session_id", ASCENDING), ("document_type", ASCENDING)])
+        await self.db.plannerDocumentVersions.create_index(
+            [("planner_session_id", ASCENDING), ("document_type", ASCENDING), ("version", ASCENDING)]
+        )
+        await self.db.plannerResearchFacts.create_index([("planner_session_id", ASCENDING), ("created_at", ASCENDING)])
+        await self.db.tripParticipants.create_index([("trip_plan_id", ASCENDING), ("user_id", ASCENDING)], unique=True)
+        await self.db.shareInvites.create_index([("token", ASCENDING)], unique=True)
 
     async def ready(self) -> dict[str, Any]:
         try:

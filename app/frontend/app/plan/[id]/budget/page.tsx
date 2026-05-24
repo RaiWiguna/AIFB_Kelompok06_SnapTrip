@@ -5,14 +5,14 @@ import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { TripBackLink } from "@/components/trip-back-link"
 import { TripBudgetExplorer } from "@/components/trip-budget-explorer"
 import { ApiError } from "@/lib/api/client"
-import { getPlannerPreview } from "@/lib/api/planner-preview"
+import { getPlannerSession } from "@/lib/api/planner-sessions"
 
 export default async function PlannerBudgetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const cookieHeader = (await cookies()).toString()
   let preview
   try {
-    preview = await getPlannerPreview(id, cookieHeader)
+    preview = await getPlannerSession(id, cookieHeader)
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       redirect(`/signin?next=${encodeURIComponent(`/plan/${id}/budget`)}&action=trips`)
@@ -40,7 +40,7 @@ export default async function PlannerBudgetPage({ params }: { params: Promise<{ 
               {preview.title}
             </h1>
             <p className="mt-2 max-w-2xl text-[13.5px] leading-relaxed text-foreground/75">
-              Estimated budget for {detail.itinerary.length} days, 2-8 travelers. Numbers update as you continue
+              Estimated budget for {detail.itinerary.length} days, {preview.travelerCount} travelers. Numbers update as you continue
               planning with the assistant.
             </p>
           </div>

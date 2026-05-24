@@ -4,7 +4,7 @@
 | --- | --- |
 | Document status | Canonical implementation roadmap |
 | Created | 2026-05-08 |
-| Last updated | 2026-05-23 |
+| Last updated | 2026-05-24 |
 | Source of truth | `.agents/PRD.md` |
 | Purpose | Execution plan for implementing SnapTrip across scaffold, MongoDB/GridFS backend, PyTorch classifier, frontend, recommendation AI, deployment, post-deployment agentic planner, and final acceptance |
 
@@ -377,7 +377,7 @@ Exit criteria:
 
 ## 15. Phase 11 - Agentic Planner, Documents, Acceptance, Invites, Participants, and Planner UI
 
-Status: Pending for planner scope; real image-classification slice implemented.
+Status: In progress; stateful planner session, document persistence, chat observability, acceptance, and invite backend slice implemented.
 
 Current implementation notes:
 
@@ -388,7 +388,20 @@ Current implementation notes:
   - image upload rejects corrupt JPG/PNG bytes before GridFS persistence and enforces the 8-image cap across the whole trip creation session;
   - classification returns all four canonical label confidences per image, stores averaged aggregate confidences, and the UI shows full per-image and aggregate confidence scores;
   - the default confirmed category is the highest averaged classifier label, while manual override remains available.
-- AI destination recommendations and the agentic planner remain deferred beyond this image-classification slice.
+- AI destination recommendations are implemented. The first agentic planner slice is implemented in repo terms:
+  - Flow 2 recommendation selection now validates exactly one destination before planner entry.
+  - Planner creation requires selected destination, start date, end date, and traveler count.
+  - `plannerSessions`, `plannerMessages`, `plannerRuns`, `plannerEvents`, `plannerDocuments`, `plannerDocumentVersions`, `plannerResearchFacts`, `tripParticipants`, and `shareInvites` are available in memory and Mongo store paths.
+  - `/api/planner-sessions/from-trip-creation/{trip_creation_session_id}` creates a planner session and initial prompt.
+  - `/api/planner-sessions/{planner_session_id}` returns session snapshot, visible messages, events, current documents, and display-ready memo/itinerary/budget data.
+  - `/api/planner-sessions/{planner_session_id}/messages` supports follow-up turns that can patch documents or answer directly.
+  - `/api/planner-sessions/{planner_session_id}/events` exposes replayable sanitized events with SSE support.
+  - `/api/planner-sessions/{planner_session_id}/accept` creates an accepted TripPlan from latest valid documents.
+  - Invite create, preview, join, and revoke endpoints are implemented.
+  - Frontend `/new/recommendations` gates `Open AI Trip Planner` on one destination, valid dates, and traveler count.
+  - Frontend `/plan/{planner_session_id}` renders backend messages/events, removes old assistant greeting/suggested prompt buttons, and enables review/accept only after document validation.
+  - Full planner memo, itinerary, budget, and accepted pages read real planner session documents instead of preview synthesis.
+  - `docs/adr/0013-agentic-trip-planner-runtime-state-and-observability.md` records the durable runtime and recovery boundary.
 
 Execution list:
 
@@ -396,13 +409,13 @@ Execution list:
   - `trip_memo.v1`
   - `full_itinerary.v1`
   - `budget_plan.v1`
-- Implement planner session backend.
-- Implement backend planner tools.
-- Implement Gemini planner provider.
-- Implement planner messages and document endpoints.
-- Implement Trip Plan acceptance.
-- Implement share invites and participants.
-- Replace deferred planner UI with real planner UI.
+- Implement planner session backend. Status: first slice complete.
+- Implement backend planner tools. Status: first deterministic/provider-boundary slice complete.
+- Implement Gemini planner provider. Status: prompt modules and tool boundary added; real provider loop remains follow-up.
+- Implement planner messages and document endpoints. Status: first slice complete.
+- Implement Trip Plan acceptance. Status: first slice complete.
+- Implement share invites and participants. Status: first slice complete for backend APIs.
+- Replace deferred planner UI with real planner UI. Status: first slice complete for planner workspace, document pages, and review/accept.
 - Implement invite frontend.
 - Add planner E2E tests.
 - Promote or replace Phase 7 planner preview adapters with real planner session/document contracts.

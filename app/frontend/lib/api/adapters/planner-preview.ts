@@ -1,5 +1,10 @@
 import { apiAssetUrl } from "@/lib/api/client"
-import type { BackendPlannerPreview, PlannerPreviewDisplay } from "@/lib/api/types"
+import type {
+  BackendPlannerPreview,
+  BackendPlannerSessionResponse,
+  PlannerPreviewDisplay,
+  PlannerSessionDisplay,
+} from "@/lib/api/types"
 import type {
   BudgetCategory,
   BudgetCategoryId,
@@ -57,6 +62,53 @@ export function adaptPlannerPreview(body: BackendPlannerPreview): PlannerPreview
         activities: budgetById.get("activities") || "Budget TBD",
         meals: budgetById.get("meals") || "Budget TBD",
       },
+    },
+  }
+}
+
+export function adaptPlannerSession(body: BackendPlannerSessionResponse): PlannerSessionDisplay {
+  const session = body.session
+  const display = session.display
+  const preview = adaptPlannerPreview({
+    session_id: session.id,
+    title: display.title,
+    status: "planner_preview",
+    categories: display.categories,
+    source: "planner_session",
+    documents: {
+      persisted: true,
+      schema_versions: Object.values(session.documents)
+        .filter(Boolean)
+        .map((doc) => doc?.schema_version || ""),
+      note: display.acceptance.reason,
+    },
+    destinations: display.destinations,
+    memo: display.memo,
+    itinerary: display.itinerary,
+    budget: display.budget,
+    gallery: display.gallery,
+    acceptance: display.acceptance,
+  })
+  const hasMemo = Boolean(session.documents.trip_memo)
+  const hasItinerary = Boolean(session.documents.full_itinerary)
+  const hasBudget = Boolean(session.documents.budget_plan)
+  return {
+    ...preview,
+    status: session.status,
+    messages: session.messages,
+    events: session.events,
+    ready: session.ready,
+    acceptedTripPlanId: session.accepted_trip_plan_id,
+    travelStartDate: session.travel_start_date,
+    travelEndDate: session.travel_end_date,
+    travelerCount: session.traveler_count,
+    workspace: {
+      ...preview.workspace,
+      memoCaption: hasMemo ? preview.workspace.memoCaption : null,
+      memoItemCount: hasMemo ? preview.workspace.memoItemCount : 0,
+      memoTiles: hasMemo ? preview.workspace.memoTiles : [],
+      itineraryDays: hasItinerary ? preview.workspace.itineraryDays : [],
+      budget: hasBudget ? preview.workspace.budget : null,
     },
   }
 }

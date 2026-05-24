@@ -7,14 +7,14 @@ import { AppFooter } from "@/components/app-footer"
 import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { AcceptedHeroBadge } from "@/components/planner/accepted-hero-badge"
 import { ApiError } from "@/lib/api/client"
-import { getPlannerPreview } from "@/lib/api/planner-preview"
+import { getPlannerSession } from "@/lib/api/planner-sessions"
 
 export default async function PlanAcceptedPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const cookieHeader = (await cookies()).toString()
   let preview
   try {
-    preview = await getPlannerPreview(id, cookieHeader)
+    preview = await getPlannerSession(id, cookieHeader)
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       redirect(`/signin?next=${encodeURIComponent(`/plan/${id}/accepted`)}&action=trips`)
@@ -61,14 +61,13 @@ export default async function PlanAcceptedPage({ params }: { params: Promise<{ i
             <div>
               <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-primary ring-1 ring-primary/20">
                 <CheckCircle2 className="size-3.5" aria-hidden />
-                Acceptance deferred
+                Planner accepted
               </span>
               <h1 className="mt-4 max-w-2xl font-display text-[clamp(2.2rem,3.6vw,3.4rem)] leading-[1.02] tracking-[-0.02em] text-primary">
                 {preview.title}
               </h1>
               <p className="mt-3 max-w-xl text-[14.5px] leading-relaxed text-foreground/75">
-                This screen preserves the accepted-plan preview layout, but no Trip Plan has been accepted or saved.
-                Real acceptance, invites, and participants remain deferred to the full planner flow.
+                Your planner documents are valid and ready to be saved as a Trip Plan with the selected visibility.
               </p>
 
               <div className="mt-6 flex flex-wrap items-center gap-2">
@@ -88,7 +87,7 @@ export default async function PlanAcceptedPage({ params }: { params: Promise<{ i
                   Share
                 </button>
                 <span className="inline-flex items-center gap-2 rounded-full bg-card px-4 py-2.5 text-[13px] font-medium text-muted-foreground ring-1 ring-border/70">
-                  Preview only
+                  {preview.status === "accepted" ? "Accepted" : "Draft"}
                 </span>
               </div>
             </div>
@@ -151,18 +150,18 @@ export default async function PlanAcceptedPage({ params }: { params: Promise<{ i
           <ol className="mt-4 grid gap-3 md:grid-cols-3">
             <NextStep
               n={1}
-              title="Acceptance is deferred"
-              body="The preview has not been saved as an accepted Trip Plan."
+              title="Trip Plan saved"
+              body="Acceptance creates a persisted Trip Plan from the latest valid documents."
             />
             <NextStep
               n={2}
-              title="Keep previewing"
-              body="Return to the planner preview to inspect the deterministic draft."
+              title="Keep refining"
+              body="Return to the planner to chat with the agent and revise the documents."
             />
             <NextStep
               n={3}
-              title="Full planner later"
-              body="Invites, participants, and persisted planner documents remain later scope."
+              title="Share when ready"
+              body="Use private, invite-only, or public visibility for the accepted plan."
             />
           </ol>
         </section>

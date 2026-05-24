@@ -1,6 +1,9 @@
 "use client"
 
 import { ArrowLeft, ArrowRight, CheckCircle2, Globe2, Lock, Users } from "lucide-react"
+import { useState } from "react"
+
+type Visibility = "private" | "invite_only" | "public"
 
 type WorkspaceState = {
   memoCaption: string | null
@@ -19,15 +22,21 @@ type WorkspaceState = {
 export function ReviewPanel({
   state,
   acceptanceReason,
+  acceptanceEnabled,
   onBack,
+  onAccept,
 }: {
   state: WorkspaceState
   acceptanceReason?: string
+  acceptanceEnabled?: boolean
   onBack: () => void
+  onAccept?: (visibility: Visibility) => Promise<void> | void
 }) {
+  const [visibility, setVisibility] = useState<Visibility>("private")
   const memoOk = state.memoTilesCount > 0 && Boolean(state.memoCaption)
   const itineraryOk = state.itineraryDays.length > 0
   const budgetOk = Boolean(state.budget)
+  const canAccept = Boolean(acceptanceEnabled) && memoOk && itineraryOk && budgetOk
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 pr-1">
@@ -79,16 +88,26 @@ export function ReviewPanel({
       <section className="rounded-2xl bg-secondary/60 p-4 ring-1 ring-border/70">
         <p className="text-[12.5px] font-medium text-foreground">Visibility</p>
         <div className="mt-2 space-y-2">
-          <VisibilityOption icon={<Lock className="size-4" aria-hidden />} label="Private" description="Only you can see it." checked />
+          <VisibilityOption
+            icon={<Lock className="size-4" aria-hidden />}
+            label="Private"
+            description="Only you can see it."
+            checked={visibility === "private"}
+            onChange={() => setVisibility("private")}
+          />
           <VisibilityOption
             icon={<Users className="size-4" aria-hidden />}
             label="Invite only"
             description="Visible to participants you invite."
+            checked={visibility === "invite_only"}
+            onChange={() => setVisibility("invite_only")}
           />
           <VisibilityOption
             icon={<Globe2 className="size-4" aria-hidden />}
             label="Public"
             description="Appears in Explore and counts toward likes/saves."
+            checked={visibility === "public"}
+            onChange={() => setVisibility("public")}
           />
         </div>
       </section>
@@ -104,9 +123,10 @@ export function ReviewPanel({
         </button>
         <button
           type="button"
-          disabled
-          title={acceptanceReason || "Acceptance is implemented in the later planner flow."}
-          className="inline-flex flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-full bg-primary px-4 py-2.5 text-[13.5px] font-medium text-primary-foreground ring-1 ring-primary/20 disabled:opacity-100"
+          disabled={!canAccept}
+          title={canAccept ? "" : acceptanceReason || "Planner documents are incomplete."}
+          onClick={() => onAccept?.(visibility)}
+          className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-primary px-4 py-2.5 text-[13.5px] font-medium text-primary-foreground ring-1 ring-primary/20 disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground"
         >
           <CheckCircle2 className="size-4" aria-hidden />
           Accept Plan
@@ -154,11 +174,13 @@ function VisibilityOption({
   label,
   description,
   checked,
+  onChange,
 }: {
   icon: React.ReactNode
   label: string
   description: string
   checked?: boolean
+  onChange: () => void
 }) {
   return (
     <label
@@ -168,7 +190,7 @@ function VisibilityOption({
           : "flex cursor-pointer items-start gap-3 rounded-xl bg-card p-2.5 ring-1 ring-border hover:ring-primary/40"
       }
     >
-      <input type="radio" name="visibility" defaultChecked={checked} className="sr-only" />
+      <input type="radio" name="visibility" checked={checked} onChange={onChange} className="sr-only" />
       <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-secondary text-primary ring-1 ring-border">
         {icon}
       </span>

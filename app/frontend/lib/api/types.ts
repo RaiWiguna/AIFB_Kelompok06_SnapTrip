@@ -250,6 +250,7 @@ export type BackendTripDetail = {
     budget_total: string
     visibility: "private" | "invite_only" | "public"
     status: "draft" | "accepted"
+    planner_session_id?: string | null
   }
   gallery: {
     thumbs: { src: string; alt: string }[]
@@ -320,6 +321,10 @@ export type BackendTripCreationSession = {
   confirmed_categories: CategoryId[]
   selected_recommendation_ids: string[]
   latest_recommendation_run_id?: string | null
+  travel_start_date?: string | null
+  travel_end_date?: string | null
+  duration_days?: number | null
+  traveler_count?: number | null
   images: BackendUploadedImage[]
   uploaded_images: BackendUploadedImage[]
   source_images: BackendUploadedImage[]
@@ -337,6 +342,10 @@ export type TripCreationSessionDisplay = {
   confirmedCategories: CategoryId[]
   selectedRecommendationIds: string[]
   latestRecommendationRunId?: string | null
+  travelStartDate?: string | null
+  travelEndDate?: string | null
+  durationDays?: number | null
+  travelerCount?: number | null
   images: UploadedImageDisplay[]
   classification?: ClassificationDisplay | null
   recommendations?: {
@@ -365,6 +374,102 @@ export type BackendPlannerPreview = {
     enabled: boolean
     reason: string
   }
+}
+
+export type BackendPlannerMessage = {
+  id: string
+  planner_session_id: string
+  run_id?: string | null
+  sequence: number
+  role: "user" | "assistant" | "tool" | string
+  content: string
+  visible?: boolean
+  queued?: boolean
+  created_at?: string
+}
+
+export type BackendPlannerEvent = {
+  id: string
+  planner_session_id: string
+  run_id?: string | null
+  sequence: number
+  type: string
+  label: string
+  status: "ok" | "error" | string
+  payload?: Record<string, unknown>
+  created_at?: string
+}
+
+export type BackendPlannerDocument = {
+  id: string
+  planner_session_id: string
+  document_type: "trip_memo" | "full_itinerary" | "budget_plan"
+  schema_version: string
+  version: number
+  valid: boolean
+  content: Record<string, unknown>
+}
+
+export type BackendPlannerSession = {
+  id: string
+  owner_id: string
+  trip_creation_session_id: string
+  selected_recommendation_id: string
+  selected_destination_name: string
+  travel_start_date: string
+  travel_end_date: string
+  duration_days: number
+  traveler_count: number
+  status: "idle" | "working" | "needs_input" | "ready_to_review" | "interrupted" | "accepted"
+  active_run_id?: string | null
+  ready: boolean
+  accepted_trip_plan_id?: string | null
+  messages: BackendPlannerMessage[]
+  events: BackendPlannerEvent[]
+  documents: {
+    trip_memo?: BackendPlannerDocument | null
+    full_itinerary?: BackendPlannerDocument | null
+    budget_plan?: BackendPlannerDocument | null
+  }
+  display: {
+    title: string
+    categories: CategoryId[]
+    destinations: BackendTripDetailStop[]
+    memo: BackendTripDetail["memo"]
+    itinerary: BackendTripDetail["itinerary"]
+    budget: BackendTripDetail["budget"] & {
+      estimated_total_idr?: number | null
+      per_person_idr?: number | null
+    }
+    gallery: BackendTripDetail["gallery"]
+    acceptance: {
+      enabled: boolean
+      reason: string
+      validation?: { valid: boolean; missing: string[]; invalid: string[] }
+    }
+  }
+}
+
+export type BackendPlannerSessionResponse = {
+  session: BackendPlannerSession
+}
+
+export type PlannerSessionDisplay = Omit<PlannerPreviewDisplay, "status"> & {
+  status:
+    | "idle"
+    | "working"
+    | "needs_input"
+    | "ready_to_review"
+    | "interrupted"
+    | "accepted"
+    | "planner_preview"
+  messages: BackendPlannerMessage[]
+  events: BackendPlannerEvent[]
+  ready: boolean
+  acceptedTripPlanId?: string | null
+  travelStartDate: string
+  travelEndDate: string
+  travelerCount: number
 }
 
 export type PlannerWorkspaceInitialState = {

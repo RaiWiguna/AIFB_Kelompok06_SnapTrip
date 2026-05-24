@@ -6,14 +6,14 @@ import { AppFooter } from "@/components/app-footer"
 import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { PlannerWorkspace } from "@/components/planner/planner-workspace"
 import { ApiError } from "@/lib/api/client"
-import { getPlannerPreview } from "@/lib/api/planner-preview"
+import { getPlannerSession } from "@/lib/api/planner-sessions"
 
 export default async function PlannerSessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const cookieHeader = (await cookies()).toString()
-  let preview
+  let planner
   try {
-    preview = await getPlannerPreview(id, cookieHeader)
+    planner = await getPlannerSession(id, cookieHeader)
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       redirect(`/signin?next=${encodeURIComponent(`/plan/${id}`)}&action=trips`)
@@ -39,15 +39,10 @@ export default async function PlannerSessionPage({ params }: { params: Promise<{
             My trips
           </Link>
           <span className="mx-2">/</span>
-          <span className="text-foreground">{preview.title}</span>
+          <span className="text-foreground">{planner.title}</span>
         </nav>
 
-        <PlannerWorkspace
-          tripId={preview.sessionId}
-          title={preview.title}
-          initialState={preview.workspace}
-          acceptanceReason={preview.acceptance.reason}
-        />
+        <PlannerWorkspace initialPlanner={planner} />
       </main>
 
       <AppFooter />

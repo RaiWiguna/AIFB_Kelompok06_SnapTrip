@@ -2,8 +2,8 @@
 
 import { motion, AnimatePresence } from "framer-motion"
 import { Check } from "lucide-react"
-import type { ChatTurn } from "@/lib/planner-demo"
-import { ACTIVE_PILL_ICON, TURN_ICONS } from "@/lib/planner-demo"
+import type { ChatTurn } from "@/lib/planner-events"
+import { ACTIVE_PILL_ICON, TURN_ICONS } from "@/lib/planner-events"
 
 export function AgentTimeline({ runs }: { runs: ChatTurn[] }) {
   return (

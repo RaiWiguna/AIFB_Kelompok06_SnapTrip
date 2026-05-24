@@ -133,6 +133,10 @@ export function adaptTripCreationSession(session: BackendTripCreationSession): T
     confirmedCategories: session.confirmed_categories || [],
     selectedRecommendationIds: selectedIds,
     latestRecommendationRunId: session.latest_recommendation_run_id,
+    travelStartDate: session.travel_start_date,
+    travelEndDate: session.travel_end_date,
+    durationDays: session.duration_days,
+    travelerCount: session.traveler_count,
     images,
     classification: adaptClassification(session.classification, images),
     recommendations: session.latest_recommendations

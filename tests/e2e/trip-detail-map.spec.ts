@@ -7,7 +7,7 @@ test("opens a public trip detail anonymously and uses static map fallback withou
 
   await page.goto(`/trips/${tripId}`);
 
-  await expect(page.getByText("Pantai Kuta Journey")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pantai Kuta Journey" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Trip Memo" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Full Itinerary" })).toBeVisible();
   await expect(page.getByText(/Budget Plan/i)).toBeVisible();

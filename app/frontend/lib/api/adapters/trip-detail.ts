@@ -54,6 +54,7 @@ function adaptTripSummary(body: BackendTripDetail) {
   const budgetById = new Map(body.budget.categories.map((category) => [category.id, category]))
   return {
     ...card,
+    ownerId: plan.owner_id,
     description: plan.description,
     tags: card.categories.map((category) => CATEGORY_LABEL[category] || category),
     durationDays: plan.duration_days || 1,
@@ -76,6 +77,9 @@ function adaptTripSummary(body: BackendTripDetail) {
       followers: plan.owner_stats.followers,
       responseRate: plan.owner_stats.response_rate,
     },
+    visibility: plan.visibility,
+    status: plan.status,
+    plannerSessionId: plan.planner_session_id,
     budget: {
       total: plan.budget_total || formatIdrLong(plan.estimated_budget_idr),
       accommodation: budgetSummary(budgetById.get("accommodation")),

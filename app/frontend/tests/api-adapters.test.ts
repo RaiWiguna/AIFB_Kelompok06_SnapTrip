@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { readFileSync } from "node:fs"
@@ -15,6 +15,10 @@ import { TripRouteMap } from "../components/trip-route-map"
 import { PlannerWorkspace } from "../components/planner/planner-workspace"
 import { ReviewPanel } from "../components/planner/review-panel"
 import { env } from "../lib/env"
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}))
 
 describe("frontend API adapters", () => {
   const originalGoogleMapsKey = env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY
