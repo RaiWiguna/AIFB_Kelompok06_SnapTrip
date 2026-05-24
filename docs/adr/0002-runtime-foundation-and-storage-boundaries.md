@@ -46,7 +46,7 @@ Classifier boundary:
 
 - The classifier is accessed through a backend service boundary.
 - Local development and automated tests default to mock classifier mode.
-- Real MobileNetV2 mode is a configured boundary that intentionally remains incomplete until a trained model artifact is promoted and loader behavior is implemented.
+- Real classifier mode was initially an incomplete configured boundary; it is now superseded by ADR 0011, which promotes the MobileNetV4 Medium v2 CPU inference artifact.
 - Classifier and manual category confirmation outputs are constrained to the four canonical category IDs.
 
 Compose and deployment placeholders:
@@ -69,7 +69,7 @@ The remote compose placeholder is intentionally narrow. It preserves the root Do
 
 - Future backend tests should add MongoDB testcontainers coverage and eventually remove reliance on the memory adapter for API-level behavior.
 - The Mongo image placeholder is not production-final; real GridFS upload/read/delete helpers are required before image storage is considered complete.
-- The real classifier path must not be treated as available until a trained artifact and loader are implemented and verified.
+- The real classifier path is available only under the promoted artifact and runtime boundary documented in ADR 0011.
 - Hosted deployment work must replace the remote compose placeholder with the full production stack.
 - API routes should continue to depend on service/store boundaries rather than directly embedding MongoDB or provider client logic.
 

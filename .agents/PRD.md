@@ -24,7 +24,7 @@ Those files may still be used as historical context only. Future implementation 
 Known annulled conflicts:
 
 - Old documents mention PostgreSQL. SnapTrip MVP now uses self-hosted MongoDB.
-- Old documents mention TensorFlow/Keras. SnapTrip MVP now uses PyTorch with MobileNetV2.
+- Old documents mention TensorFlow/Keras. SnapTrip MVP now uses PyTorch with MobileNetV4 Medium.
 - Old documents describe a simpler no-auth session flow. SnapTrip MVP now requires email/password accounts for ownership, likes, collections, invites, and participants.
 - Old documents describe local-only deployment. SnapTrip MVP now requires one-VM Docker Compose deployment with Caddy and GitHub Actions.
 - Old documents describe broad category lists. SnapTrip MVP uses exactly four canonical tourism categories for classifier output and Explore filtering.
@@ -41,7 +41,7 @@ Core surfaces:
 - Collection management for saved trip plans and reusable visual inspiration.
 - Trip creation flow from uploaded images or images selected from likes/collections.
 - AI destination recommendation flow using:
-  - PyTorch MobileNetV2 classifier.
+  - PyTorch MobileNetV4 Medium classifier.
   - Predefined curated Indonesian destination seed data.
   - Google Places API.
   - Gemini structured output.
@@ -52,7 +52,7 @@ Core surfaces:
 Hosted runtime:
 
 - Frontend: Next.js, Node.js, TypeScript, Vitest.
-- Backend and image classifier: Python FastAPI, `uv`, PyTorch MobileNetV2, pytest, pytest-asyncio, httpx.
+- Backend and image classifier: Python FastAPI, `uv`, PyTorch MobileNetV4 Medium, pytest, pytest-asyncio, httpx.
 - Database: self-hosted MongoDB.
 - Image storage: MongoDB GridFS.
 - E2E tests: Playwright.
@@ -73,7 +73,7 @@ All application data mutations must go through the FastAPI backend. The frontend
 - Let users browse public trip plans and filter by the four canonical tourism categories.
 - Let authenticated users like trip plans and save them to new or existing collections.
 - Let users start a new trip plan from uploaded images or selected images from liked/saved trip plans.
-- Use a PyTorch MobileNetV2 classifier to infer tourism category preferences from multiple images.
+- Use a PyTorch MobileNetV4 Medium classifier to infer tourism category preferences from multiple images.
 - Use curated Indonesian seed destinations as the controlled recommendation base.
 - Enrich candidate destinations through Google Places API before sending normalized place data to Gemini.
 - Use Gemini to generate structured recommendation cards, not raw chat text.
@@ -121,7 +121,7 @@ All application data mutations must go through the FastAPI backend. The frontend
 | Frontend | Next.js, Node.js, TypeScript, Vitest |
 | Backend | Python FastAPI |
 | Backend package manager | `uv` |
-| Image classifier | PyTorch MobileNetV2 |
+| Image classifier | PyTorch MobileNetV4 Medium |
 | Database | Self-hosted MongoDB |
 | Image storage | MongoDB GridFS |
 | Backend tests | pytest, pytest-asyncio, httpx, testcontainers |
@@ -305,7 +305,7 @@ System obligations:
 
 ### 7.3 AI Scope
 
-- Four-label image classification with MobileNetV2.
+- Four-label image classification with MobileNetV4 Medium.
 - Aggregation of predictions across multiple images.
 - Manual category correction fallback.
 - Category-to-destination seed matching.
@@ -355,7 +355,7 @@ System obligations:
 4. Backend validates images again.
 5. Backend stores uploaded files or selected image references in GridFS/image metadata.
 6. Backend preprocesses images to classifier input format.
-7. PyTorch MobileNetV2 classifier returns per-image category confidence scores.
+7. PyTorch MobileNetV4 Medium classifier returns per-image category confidence scores.
 8. Backend aggregates predictions across all images.
 9. UI shows predicted categories with confidence and source images.
 10. User confirms or manually corrects category labels.
@@ -523,7 +523,7 @@ Destination cards must include:
 
 ### 9.6 Image Classification
 
-- Classifier uses PyTorch MobileNetV2.
+- Classifier uses PyTorch MobileNetV4 Medium.
 - Classifier outputs only canonical categories.
 - Classifier returns confidence scores from 0 to 1.
 - Backend stores per-image classification results.
@@ -775,9 +775,9 @@ Purpose: stores classifier predictions for images.
   "user_id": "usr_...",
   "trip_creation_session_id": "tcs_...",
   "image_id": "img_...",
-  "model_name": "mobilenetv2",
+  "model_name": "mobilenetv4_medium",
   "model_framework": "pytorch",
-  "model_version": "2026-05-mvp",
+  "model_version": "2026-05-mvp-mobilenetv4-medium-v2",
   "preprocessing_version": "224-square-v1",
   "predictions": [
     {
@@ -1411,9 +1411,9 @@ Response:
       }
     ],
     "model": {
-      "name": "mobilenetv2",
+      "name": "mobilenetv4_medium",
       "framework": "pytorch",
-      "version": "2026-05-mvp"
+      "version": "2026-05-mvp-mobilenetv4-medium-v2"
     }
   }
 }
@@ -1614,7 +1614,7 @@ Response:
 | Property | Requirement |
 | --- | --- |
 | Framework | PyTorch |
-| Architecture | MobileNetV2 |
+| Architecture | MobileNetV4 Medium |
 | Input count | 1 to 8 images |
 | Input preprocessing | Resize/crop to expected model input, expected `224 x 224` |
 | Output labels | `pantai`, `gunung`, `air_terjun`, `wisata_tradisional` |
@@ -1789,7 +1789,7 @@ Required:
 - Pydantic for request/response schemas.
 - Motor or PyMongo for MongoDB access.
 - GridFS integration.
-- PyTorch and torchvision for MobileNetV2 inference.
+- PyTorch, torchvision, and timm for MobileNetV4 Medium inference.
 - httpx for outbound provider calls.
 - pytest, pytest-asyncio, httpx, and testcontainers for tests.
 
@@ -1956,8 +1956,8 @@ COOKIE_DOMAIN=snaptrip.site
 MONGODB_URI=
 MONGODB_DATABASE=snaptrip
 GRIDFS_BUCKET=snaptrip_images
-CLASSIFIER_MODEL_PATH=/app/models/snaptrip_mobilenetv2.pt
-CLASSIFIER_MODEL_VERSION=2026-05-mvp
+CLASSIFIER_MODEL_PATH=/app/models/snaptrip_mobilenetv4_medium_v2_best.pth
+CLASSIFIER_MODEL_VERSION=2026-05-mvp-mobilenetv4-medium-v2
 GEMINI_API_KEY=
 GEMINI_MODEL=
 GOOGLE_PLACES_API_KEY=
@@ -2463,7 +2463,7 @@ The SnapTrip MVP implementation is done when:
 - Explore supports public Trip Plans and category filtering.
 - Like and collection save flows work for authenticated users.
 - Image upload or selected saved images can start trip creation.
-- PyTorch MobileNetV2 classifier returns canonical category predictions.
+- PyTorch MobileNetV4 Medium classifier returns canonical category predictions.
 - User can confirm or correct categories.
 - Places API enrichment and seed fallback work.
 - Gemini recommendation returns validated structured destination cards.

@@ -13,6 +13,7 @@ COPY app/backend/pyproject.toml app/backend/uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY app/backend/app ./app
+COPY training/output/model/snaptrip_mobilenetv4_medium_v2_best.pth ./models/snaptrip_mobilenetv4_medium_v2_best.pth
 RUN python -m compileall app
 
 RUN useradd --create-home --shell /usr/sbin/nologin snaptrip

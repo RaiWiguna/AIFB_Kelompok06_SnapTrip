@@ -117,7 +117,7 @@ Execution list:
 - Keep four categories: `pantai`, `gunung`, `air_terjun`, `wisata_tradisional`.
 - Keep email/password auth.
 - Keep MongoDB/GridFS.
-- Keep PyTorch MobileNetV2.
+- Keep PyTorch MobileNetV4 Medium for the runtime image classifier.
 - Keep Google Places API and Gemini backend-only.
 - Keep domains `snaptrip.site` and `api.snaptrip.site`.
 - Store ADRs under `docs/adr/`.
@@ -204,7 +204,7 @@ Execution list:
 - Implement trip creation session.
 - Implement image upload to GridFS.
 - Implement image references from liked/saved Trip Plans.
-- Add PyTorch MobileNetV2 classifier module and mock classifier mode.
+- Add PyTorch MobileNetV4 Medium classifier module and mock classifier mode.
 - Implement classification endpoint and aggregation.
 - Implement category confirmation/manual correction.
 - Seed curated Indonesian destinations across all four categories.
@@ -375,7 +375,18 @@ Exit criteria:
 
 ## 15. Phase 11 - Agentic Planner, Documents, Acceptance, Invites, Participants, and Planner UI
 
-Status: Pending.
+Status: Pending for planner scope; real image-classification slice implemented.
+
+Current implementation notes:
+
+- Partial Phase 11 image-classification slice is implemented in repo terms:
+  - backend real classifier mode now loads `training/output/model/snaptrip_mobilenetv4_medium_v2_best.pth` as a CPU-only MobileNetV4 Medium model through `timm`, PyTorch, and torchvision preprocessing;
+  - Docker copies the tracked model artifact to `/app/models/snaptrip_mobilenetv4_medium_v2_best.pth`;
+  - production runtime env uses `CLASSIFIER_MODE=real`, `CLASSIFIER_MODEL_PATH=/app/models/snaptrip_mobilenetv4_medium_v2_best.pth`, and `CLASSIFIER_MODEL_VERSION=2026-05-mvp-mobilenetv4-medium-v2`;
+  - image upload rejects corrupt JPG/PNG bytes before GridFS persistence and enforces the 8-image cap across the whole trip creation session;
+  - classification returns all four canonical label confidences per image, stores averaged aggregate confidences, and the UI shows full per-image and aggregate confidence scores;
+  - the default confirmed category is the highest averaged classifier label, while manual override remains available.
+- AI destination recommendations and the agentic planner remain deferred beyond this image-classification slice.
 
 Execution list:
 

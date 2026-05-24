@@ -127,6 +127,7 @@ export type PerImagePredictionDisplay = {
   topLabel: string
   confidence: number
   confidenceLabel: string
+  scores: CategoryScoreDisplay[]
 }
 
 export type ClassificationDisplay = {

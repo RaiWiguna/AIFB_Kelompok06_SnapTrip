@@ -460,7 +460,7 @@ Do not silently re-decide these without updating `.agents/PRD.md`, `.agents/impl
 - Database is self-hosted MongoDB.
 - Images use MongoDB GridFS.
 - Backend integration tests use MongoDB testcontainers.
-- Image classifier uses PyTorch MobileNetV2.
+- Image classifier uses PyTorch MobileNetV4 Medium.
 - Canonical categories are `pantai`, `gunung`, `air_terjun`, and `wisata_tradisional`.
 - Gemini and Google Places API are backend-only.
 - LLM/agent output must be validated structured JSON before persistence or UI rendering.

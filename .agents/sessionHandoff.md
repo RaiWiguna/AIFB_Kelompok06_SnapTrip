@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Document status | Active handoff |
-| Last updated | 2026-05-23 |
-| Branch | `feat/integrated-product-journeys` |
-| Purpose | Resume point after Phase 10 deployment foundation |
+| Last updated | 2026-05-24 |
+| Branch | `feat/phase-11-image-classification` |
+| Purpose | Resume point after the real image-classification slice |
 
 ## 1. Completed This Session
 
@@ -32,7 +32,7 @@
   - trip creation sessions,
   - JPG/PNG upload validation and metadata persistence,
   - canonical category endpoint and validation,
-  - mock-default classifier boundary with real MobileNetV2 loader placeholder,
+  - mock-default classifier boundary with real MobileNetV4 Medium loader placeholder,
   - classification aggregation,
   - manual category confirmation,
   - curated Indonesian destination seeds.
@@ -114,6 +114,15 @@
   - added GitHub Actions CI and production deploy workflows with deploy concurrency, required secret validation, atomic runtime env upload, post-deploy smoke/readiness checks, and rollback on failed validation,
   - added `.agents/deploymentGuide.md`,
   - added `docs/adr/0009-single-vm-deployment-and-rollback-boundary.md`.
+- Implemented the partial Phase 11 real image-classification slice:
+  - added CPU-only PyTorch/torchvision/timm runtime dependencies through uv with torch and torchvision pinned to the PyTorch CPU wheel index,
+  - replaced the real classifier placeholder with a lazy cached MobileNetV4 Medium loader for `snaptrip_mobilenetv4_medium_v2_best.pth`,
+  - added eval preprocessing from the notebook/checkpoint contract: resize `256`, center crop `224`, ImageNet normalization, and CPU softmax inference,
+  - kept `CLASSIFIER_MODE=mock` for local/test defaults while production deploy renders `CLASSIFIER_MODE=real`,
+  - copied the tracked model artifact into backend Docker images at `/app/models/snaptrip_mobilenetv4_medium_v2_best.pth`,
+  - validated JPG/PNG bytes before GridFS persistence and enforced the maximum of 8 images across the full trip creation session,
+  - preserved existing classify/session/confirm API shapes while guaranteeing all four canonical confidences per image and averaged aggregate confidences,
+  - updated the category confirmation UI so per-image cards show all label confidences and the default selected category is the highest averaged label.
 
 ## 2. Current Repo Facts
 
@@ -127,7 +136,7 @@
 - Google Places API remains backend-only. Google Maps JavaScript API is allowed in frontend only for map rendering through `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`.
 - Agentic planner implementation is intentionally sequenced after Docker, remote compose, Caddy, and GitHub Actions deployment foundation.
 - Backend tests use `SNAPTRIP_STORAGE=memory` through test setup. Runtime defaults remain MongoDB-oriented.
-- Classifier local/test default is `CLASSIFIER_MODE=mock`; `real` mode intentionally requires a future trained artifact and implementation completion.
+- Classifier local/test default is `CLASSIFIER_MODE=mock`; production runtime is configured for `CLASSIFIER_MODE=real` with the tracked MobileNetV4 Medium v2 artifact copied into the backend image.
 - Root `npm run test` runs backend, frontend, and Playwright; Playwright now starts memory-mode backend and frontend dev servers for integrated product journeys and refuses to reuse stale local servers.
 - The test-only seeding API is available only under `APP_ENV=test` and should not be promoted to development or production routes.
 - Real Gemini planner chat, persisted `trip_memo.v1`, `full_itinerary.v1`, `budget_plan.v1`, Trip Plan acceptance, invites, and participants remain Phase 11 scope.
@@ -243,11 +252,24 @@ Verification after Phase 10 deployment foundation:
 - `docker compose build` and `docker compose --env-file deploy/env/runtime.production.env.example -f deploy/compose/docker-compose.remote.yml build` could not run because Docker Desktop was not running on the local machine.
 - Race-safety review confirmed GitHub Actions deploy concurrency, remote `flock` in deploy/rollback, atomic runtime env upload, atomic `current`/`current_release` promotion after service health plus public smoke/readiness checks, previous-release preservation during cleanup, and shared MongoDB/GridFS/Caddy data preservation.
 
+Verification after real image-classification slice:
+
+- `uv sync` installed CPU-only `torch==2.12.0+cpu`, `torchvision==0.27.0+cpu`, and `timm==1.0.27` from the configured uv sources.
+- `uv run pytest tests/test_classifier.py -q` passed: direct CPU checkpoint load returned four canonical confidences summing to approximately 1.0.
+- `npm run test:backend` passed: backend 41 passed / 1 skipped.
+- `npm run test:frontend` passed: frontend 2 test files / 13 tests.
+- `npm run typecheck` passed.
+- `npm run lint` passed; frontend reports 3 existing warnings and 0 errors.
+- `npm run build` passed.
+- `npm run docker:config` passed and showed local compose mock classifier mode plus remote production real classifier mode.
+- `npm run test:e2e` passed: 8 Playwright tests including upload, classification, category confirmation, recommendation selection, and planner preview.
+- `docker info` failed because the Docker Desktop Linux engine was not running, so optional local and remote image builds were not run.
+
 ## 4. Known Caveats
 
 - Mongo runtime integration is implemented at the store level, but the current automated tests use the in-memory store. Future Phase 6 work should add testcontainers MongoDB/GridFS coverage.
 - Mongo image binary writes now use Motor GridFS bucket APIs. Initial testcontainers coverage exists, but it skipped locally because Docker Desktop was not running.
-- The real MobileNetV2 classifier path is a boundary placeholder; mock mode is the supported local/test default until a trained `.pt` artifact is promoted.
+- The real MobileNetV4 Medium classifier path is implemented for CPU inference. Mock mode remains the supported local/test default unless `CLASSIFIER_MODE=real` is explicitly configured.
 - Google Places and Gemini provider calls are disabled by default in local/test env. Tests use mocked or deterministic provider behavior.
 - Some frontend routes and components still use mock data modules by design for static marketing imagery, landing-page examples, invite demo boundaries, and explicit Phase 11 placeholders.
 - Google Maps frontend rendering is implemented behind `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`; CI/local test defaults still pass without a Maps key by using the static fallback map.

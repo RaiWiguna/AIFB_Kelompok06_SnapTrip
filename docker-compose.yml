@@ -35,8 +35,9 @@ services:
       MONGODB_URI: mongodb://mongo:27017
       MONGODB_DATABASE: snaptrip
       GRIDFS_BUCKET: snaptrip_images
+      CLASSIFIER_MODEL_PATH: /app/models/snaptrip_mobilenetv4_medium_v2_best.pth
       CLASSIFIER_MODE: mock
-      CLASSIFIER_MODEL_VERSION: 2026-05-mvp
+      CLASSIFIER_MODEL_VERSION: 2026-05-mvp-mobilenetv4-medium-v2
       USE_GEMINI: "false"
       USE_GOOGLE_PLACES: "false"
       GEMINI_API_KEY: ""

@@ -108,7 +108,7 @@ The integrated product runtime and Phase 10 deployment foundation are implemente
 Implemented foundations:
 
 - Root npm scripts for install, dev, test, typecheck, lint, build, and Docker config.
-- FastAPI backend with health/readiness, auth, Explore, likes, collections, trip creation sessions, image upload/GridFS, mock classifier flow, category confirmation, recommendations, planner preview, and trip detail reads.
+- FastAPI backend with health/readiness, auth, Explore, likes, collections, trip creation sessions, image upload/GridFS, real MobileNetV4 image classification with mock test mode, category confirmation, recommendations, planner preview, and trip detail reads.
 - Next.js frontend integrated with backend APIs for the pre-planner MVP flows.
 - Local Docker Compose for MongoDB, API, and web.
 - Remote Docker Compose for Caddy, MongoDB, API, and web.
