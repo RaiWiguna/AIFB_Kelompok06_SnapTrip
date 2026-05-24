@@ -57,13 +57,18 @@ export function adaptPlannerPreview(body: BackendPlannerPreview): PlannerPreview
       })),
       budget: {
         total: body.budget.total_amount,
-        perPerson: body.budget.total_amount,
+        perPerson: formatIdr(body.budget.per_person_idr) || body.budget.total_amount,
         accommodation: budgetById.get("accommodation") || "Budget TBD",
         activities: budgetById.get("activities") || "Budget TBD",
         meals: budgetById.get("meals") || "Budget TBD",
       },
     },
   }
+}
+
+function formatIdr(value?: number | null): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null
+  return `IDR ${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value)}`
 }
 
 export function adaptPlannerSession(body: BackendPlannerSessionResponse): PlannerSessionDisplay {

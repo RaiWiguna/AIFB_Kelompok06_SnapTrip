@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 
-export const API_BASE = "http://127.0.0.1:8000";
+export const API_BASE = `http://127.0.0.1:${process.env.E2E_API_PORT || "8000"}`;
 
 export type SeedResponse = {
   seeded: true;

@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     google_places_api_key: str = ""
     use_google_places: bool = False
     use_gemini: bool = False
-    ai_provider_timeout_seconds: int = 30
+    ai_provider_timeout_seconds: int = 60
     ai_observability_enabled: bool = True
     ai_raw_llm_observability: bool = True
     ai_raw_llm_logs: bool = False

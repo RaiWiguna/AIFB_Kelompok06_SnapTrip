@@ -300,6 +300,7 @@ export type BackendTripDetail = {
     }[]
     total_amount: string
     total_label: string
+    per_person_idr?: number | null
   }
   participants: {
     id: string

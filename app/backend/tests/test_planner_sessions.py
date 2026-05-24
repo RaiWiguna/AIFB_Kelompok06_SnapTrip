@@ -2,7 +2,12 @@ import pytest
 from conftest import signup
 
 from app.schemas.planner import PlannerAgentStepV1, PlannerMessageRequest, PlannerStartRequest
-from app.services.planner import PlannerService
+from app.services.planner import (
+    PlannerService,
+    apply_meal_preference_to_itinerary,
+    fill_itinerary_day_defaults,
+    normalize_itinerary_activities,
+)
 
 
 async def create_planner_seed(
@@ -101,6 +106,60 @@ def daily_totals(budget: dict) -> list[int]:
 
 def category_total(budget: dict) -> int:
     return sum(int("".join(ch for ch in category["amount"] if ch.isdigit())) for category in budget["categories"])
+
+
+def test_pipe_delimited_activity_fields_are_normalized():
+    activities = normalize_itinerary_activities(
+        [
+            {
+                "title": "10:30 | Mural Walk | Kampung Warna-Warni Jodipan | 2h | Relaxed mural walk.",
+                "detail": "",
+            }
+        ],
+        "Kampung Warna-Warni Jodipan",
+        "Colorful culture stop.",
+        "Malang",
+    )
+
+    assert activities == [
+        {
+            "time": "10:30",
+            "title": "Mural Walk",
+            "detail": "Relaxed mural walk.",
+            "location": "Kampung Warna-Warni Jodipan",
+            "duration": "2h",
+        }
+    ]
+
+
+def test_vegetarian_meal_preference_updates_itinerary_meal_fields():
+    content = {"days": [{"day": 1, "title": "Bromo", "meals": {"lunch": "Local restaurant to confirm"}}]}
+
+    updated = apply_meal_preference_to_itinerary(content, "add vegetarian-friendly meal notes")
+
+    assert "Vegetarian-friendly" in updated["days"][0]["meals"]["lunch"]
+    assert "tempeh" in updated["days"][0]["meals"]["lunch"]
+
+
+def test_malformed_itinerary_day_fields_are_normalized():
+    day = fill_itinerary_day_defaults(
+        {
+            "day": 1,
+            "title": "Kampung Warna-Warni Jodipan",
+            "description": "Relaxed culture day.",
+            "highlights": 123,
+            "transport": "drive",
+            "accommodation": "guesthouse",
+            "estCost": "IDR 200,000",
+        },
+        {"transport": "previous bad transport", "highlights": "Culture stop"},
+        1,
+    )
+
+    assert day["highlights"] == ["Culture stop"]
+    assert day["transport"]["to"] == "Kampung Warna-Warni Jodipan"
+    assert day["accommodation"]["name"] == "Local stay to confirm"
+    assert day["estCost"]["value"] == "Budget TBD"
 
 
 @pytest.mark.asyncio
@@ -465,6 +524,218 @@ async def test_agent_tool_document_args_are_persisted_to_latest_documents(client
 
 
 @pytest.mark.asyncio
+async def test_budget_constraint_from_intent_survives_full_budget_replacement(client):
+    class FullBudgetProvider:
+        enabled = True
+
+        async def decide(self, context, trace_context=None):
+            docs = context["documents"]
+            budget = dict(docs["budget_plan"]["content"])
+            budget["estimated_total_idr"] = 2_500_000
+            budget["budget_constraint"] = None
+            return PlannerAgentStepV1(
+                intent="change_budget",
+                requires_document_edit=True,
+                affected_documents=["budget_plan"],
+                assistant_text="Budget capped.",
+                actions=[{"tool": "replace_budget_plan", "args": {"content": budget}}],
+            )
+
+    user = signup(client, "planner-budget-replace-cap@example.com")
+    session, item = await create_planner_seed(client, user["id"], name="Mount Bromo", region="East Java", categories=["gunung"])
+    created = client.post(
+        f"/api/planner-sessions/from-trip-creation/{session['id']}",
+        json=planner_payload_for_duration(item["id"], 3, traveler_count=2),
+    ).json()["session"]
+    service = PlannerService(
+        store=client.app.state.store,
+        settings=client.app.state.settings,
+        planner_provider=FullBudgetProvider(),
+    )
+
+    response = await service.send_message(
+        created["id"],
+        user,
+        PlannerMessageRequest(text="jangan lebih dari Rp 2.000.000 total untuk seluruh trip"),
+    )
+
+    budget = response["session"]["documents"]["budget_plan"]["content"]
+    assert budget["estimated_total_idr"] == 2_000_000
+    assert budget["budget_constraint"]["budget_mode"] == "max_total"
+    assert sum(daily_totals(budget)) == 2_000_000
+
+    follow_up = await service.send_message(
+        created["id"],
+        user,
+        PlannerMessageRequest(text="update itinerary and keep budget realistic"),
+    )
+    follow_up_budget = follow_up["session"]["documents"]["budget_plan"]["content"]
+    assert follow_up_budget["estimated_total_idr"] == 2_000_000
+    assert follow_up_budget["budget_constraint"]["budget_mode"] == "max_total"
+
+
+@pytest.mark.asyncio
+async def test_mutating_response_is_based_on_canonical_documents(client):
+    class MismatchedAssistantProvider:
+        enabled = True
+
+        async def decide(self, context, trace_context=None):
+            return PlannerAgentStepV1(
+                intent="add_destination",
+                requires_document_edit=True,
+                affected_documents=["full_itinerary"],
+                assistant_text="I changed Day 4 to Desa Wisata Ngadisari.",
+                actions=[
+                    {"tool": "patch_itinerary_day", "args": {"duration_days": 4, "intent": "add day 4 nearby"}},
+                    {"tool": "validate_documents", "args": {}},
+                    {"tool": "finish_response", "args": {}},
+                ],
+            )
+
+    user = signup(client, "planner-canonical-response@example.com")
+    session, item = await create_planner_seed(client, user["id"], name="Mount Bromo", region="East Java", categories=["gunung"])
+    created = client.post(
+        f"/api/planner-sessions/from-trip-creation/{session['id']}",
+        json=planner_payload_for_duration(item["id"], 3, traveler_count=2),
+    ).json()["session"]
+    service = PlannerService(
+        store=client.app.state.store,
+        settings=client.app.state.settings,
+        planner_provider=MismatchedAssistantProvider(),
+    )
+
+    response = await service.send_message(
+        created["id"],
+        user,
+        PlannerMessageRequest(text="replace day 4 with a relaxed cultural destination"),
+    )
+
+    days = response["session"]["documents"]["full_itinerary"]["content"]["days"]
+    assert days[3]["title"] == "Kampung Warna-Warni Jodipan"
+    final_message = response["session"]["messages"][-1]["content"]
+    assert "Kampung Warna-Warni Jodipan" in final_message
+    assert "Ngadisari" not in final_message
+
+
+@pytest.mark.asyncio
+async def test_itinerary_only_day_replacement_syncs_existing_budget_daily_rows(client):
+    class ItineraryOnlyProvider:
+        enabled = True
+
+        async def decide(self, context, trace_context=None):
+            day = dict(context["documents"]["full_itinerary"]["content"]["days"][3])
+            day.update(
+                {
+                    "title": "Tumpak Sewu Waterfall",
+                    "summary": "A distinct waterfall day south of the Bromo route.",
+                    "description": "Visit Tumpak Sewu for a higher-effort waterfall day before returning from East Java.",
+                    "location": "Lumajang, East Java",
+                    "activities": [
+                        {
+                            "time": "08:00",
+                            "title": "Waterfall viewpoint",
+                            "detail": "Walk to the main viewpoint and keep the pacing flexible for road conditions.",
+                            "location": "Tumpak Sewu Waterfall",
+                            "duration": "3h",
+                        }
+                    ],
+                }
+            )
+            return PlannerAgentStepV1(
+                intent="change_preferences",
+                requires_document_edit=True,
+                affected_documents=["full_itinerary"],
+                assistant_text="I changed Day 4 to Tumpak Sewu.",
+                actions=[
+                    {"tool": "patch_itinerary_day", "args": {"day": 4, "day_content": day}},
+                    {"tool": "validate_documents", "args": {}},
+                ],
+            )
+
+    user = signup(client, "planner-budget-sync-itinerary@example.com")
+    session, item = await create_planner_seed(client, user["id"], name="Mount Bromo", region="East Java", categories=["gunung"])
+    created = client.post(
+        f"/api/planner-sessions/from-trip-creation/{session['id']}",
+        json=planner_payload_for_duration(item["id"], 4, traveler_count=2),
+    ).json()["session"]
+    before_budget = created["documents"]["budget_plan"]["content"]
+    assert before_budget["daily"][3]["title"] != "Tumpak Sewu Waterfall"
+    service = PlannerService(
+        store=client.app.state.store,
+        settings=client.app.state.settings,
+        planner_provider=ItineraryOnlyProvider(),
+    )
+
+    response = await service.send_message(
+        created["id"],
+        user,
+        PlannerMessageRequest(text="change day 4 to Tumpak Sewu"),
+    )
+
+    planner = response["session"]
+    day_4 = planner["documents"]["full_itinerary"]["content"]["days"][3]
+    budget = planner["documents"]["budget_plan"]["content"]
+    assert day_4["title"] == "Tumpak Sewu Waterfall"
+    assert budget["daily"][3]["title"] == "Tumpak Sewu Waterfall"
+    assert "Tumpak Sewu" in budget["daily"][3]["route"]
+    assert sum(daily_totals(budget)) == budget["estimated_total_idr"]
+    assert planner["documents"]["budget_plan"]["version"] == created["documents"]["budget_plan"]["version"] + 1
+
+
+@pytest.mark.asyncio
+async def test_empty_targeted_itinerary_patch_uses_provider_repair(client):
+    class RepairingProvider:
+        enabled = True
+
+        def __init__(self):
+            self.repair_called = False
+
+        async def decide(self, context, trace_context=None):
+            return PlannerAgentStepV1(
+                intent="change_preferences",
+                requires_document_edit=True,
+                affected_documents=["full_itinerary"],
+                assistant_text="Day 2 was slowed down.",
+                actions=[{"tool": "patch_itinerary_day", "args": {"day": 2}}],
+            )
+
+        async def repair(self, context, validation_errors, previous_output, trace_context=None):
+            self.repair_called = True
+            day = dict(context["documents"]["full_itinerary"]["content"]["days"][1])
+            day["activities"] = [
+                {
+                    "time": "10:30",
+                    "title": "Slow cultural walk",
+                    "detail": "A slower-paced local walk with cafe time.",
+                    "location": day["title"],
+                    "duration": "2h",
+                }
+            ]
+            return PlannerAgentStepV1(
+                intent="change_preferences",
+                requires_document_edit=True,
+                affected_documents=["full_itinerary"],
+                assistant_text="Day 2 was slowed down.",
+                actions=[{"tool": "patch_itinerary_day", "args": {"day": 2, "day_content": day}}, {"tool": "validate_documents", "args": {}}],
+            )
+
+    user = signup(client, "planner-contract-repair@example.com")
+    session, item = await create_planner_seed(client, user["id"], name="Mount Bromo", region="East Java", categories=["gunung"])
+    created = client.post(
+        f"/api/planner-sessions/from-trip-creation/{session['id']}",
+        json=planner_payload_for_duration(item["id"], 3, traveler_count=2),
+    ).json()["session"]
+    provider = RepairingProvider()
+    service = PlannerService(store=client.app.state.store, settings=client.app.state.settings, planner_provider=provider)
+
+    response = await service.send_message(created["id"], user, PlannerMessageRequest(text="make day 2 slower paced"))
+
+    assert provider.repair_called is True
+    day_2 = response["session"]["documents"]["full_itinerary"]["content"]["days"][1]
+    assert day_2["activities"][0]["title"] == "Slow cultural walk"
+
+
+@pytest.mark.asyncio
 async def test_partial_agent_document_payloads_are_normalized_instead_of_failing(client):
     class PartialPayloadProvider:
         enabled = True
@@ -526,14 +797,239 @@ async def test_partial_agent_document_payloads_are_normalized_instead_of_failing
     assert day_3["title"] == "Air Terjun Madakaripura"
     assert day_3["cover"]
     assert day_3["transport"]["to"] == "Air Terjun Madakaripura"
-    assert planner["messages"][-1]["content"] == "I added Air Terjun Madakaripura as day 3."
+    assert "Itinerary now has 3 days" in planner["messages"][-1]["content"]
 
     memo_response = await service.send_message(created["id"], user, PlannerMessageRequest(text="buat memo lebih lengkap"))
     memo = memo_response["session"]["documents"]["trip_memo"]["content"]
     assert "Expanded Bromo memo" in memo["markdown"]
     assert memo["caption"]
     assert memo["tiles"]
-    assert memo_response["session"]["messages"][-1]["content"] == "Memo expanded."
+    assert memo_response["session"]["messages"][-1]["content"] == "Trip memo was updated from the latest canonical plan."
+
+
+@pytest.mark.asyncio
+async def test_malformed_gemini_memo_payload_is_normalized_instead_of_failing(client):
+    class MalformedMemoProvider:
+        enabled = True
+
+        async def decide(self, context, trace_context=None):
+            return PlannerAgentStepV1(
+                intent="change_preferences",
+                requires_document_edit=True,
+                affected_documents=["trip_memo"],
+                assistant_text="Memo expanded.",
+                actions=[
+                    {
+                        "tool": "replace_trip_memo",
+                        "args": {
+                            "content": {
+                                "markdown": "### Better trip memo\n\nA fuller memo with route rationale, pacing, and preparation notes.",
+                                "caption": "Expanded memo",
+                                "source": "Planner agent",
+                                "items": "4 tiles",
+                                "tiles": [
+                                    "/landing/indonesia-map.png",
+                                    None,
+                                    {"url": "/landing/bromo.jpg", "caption": "Bromo route"},
+                                    {"src": "", "alt": "ignored"},
+                                ],
+                            }
+                        },
+                    }
+                ],
+            )
+
+    user = signup(client, "planner-malformed-memo@example.com")
+    session, item = await create_planner_seed(client, user["id"], name="Mount Bromo", region="East Java", categories=["gunung"])
+    created = client.post(
+        f"/api/planner-sessions/from-trip-creation/{session['id']}",
+        json=planner_payload_for_duration(item["id"], 3, traveler_count=2),
+    ).json()["session"]
+    service = PlannerService(
+        store=client.app.state.store,
+        settings=client.app.state.settings,
+        planner_provider=MalformedMemoProvider(),
+    )
+
+    response = await service.send_message(
+        created["id"],
+        user,
+        PlannerMessageRequest(text="make memo more descriptive"),
+    )
+
+    planner = response["session"]
+    memo = planner["documents"]["trip_memo"]["content"]
+    assert planner["status"] == "ready_to_review"
+    assert memo["items"] == 4
+    assert memo["tiles"] == [
+        {"src": "/landing/indonesia-map.png", "alt": "Expanded memo"},
+        {"src": "/landing/bromo.jpg", "alt": "Bromo route"},
+    ]
+    assert not [event for event in planner["events"] if event["type"] in {"tool_failed", "run_failed"}]
+
+
+@pytest.mark.asyncio
+async def test_queued_follow_up_is_processed_after_active_run_finishes(client):
+    class AnswerProvider:
+        enabled = True
+
+        async def decide(self, context, trace_context=None):
+            return PlannerAgentStepV1(
+                intent="answer_question",
+                requires_document_edit=False,
+                affected_documents=[],
+                assistant_text="Queued answer from current planner documents.",
+                actions=[],
+                stop=True,
+            )
+
+    created = await create_ready_planner(client, "planner-queued-followup@example.com")
+    service = PlannerService(
+        store=client.app.state.store,
+        settings=client.app.state.settings,
+        planner_provider=AnswerProvider(),
+    )
+    queued = await service._append_message(
+        created["id"],
+        "user",
+        "what are the destinations for day 2 and day 3?",
+        visible=True,
+        run_id=None,
+        queued=True,
+    )
+
+    await service._maybe_process_next_queued_follow_up(created["id"])
+
+    stored = await client.app.state.store.find_one("plannerMessages", id=queued["id"])
+    snapshot = await service.snapshot(created["id"], {"id": created["owner_id"]})
+    assert stored["queued"] is False
+    assert snapshot["session"]["status"] == "ready_to_review"
+    assert snapshot["session"]["messages"][-1]["content"] == "Queued answer from current planner documents."
+    assert "message_dequeued" in {event["type"] for event in snapshot["session"]["events"]}
+
+
+@pytest.mark.asyncio
+async def test_agent_context_separates_visible_chat_from_sanitized_tool_observations(client):
+    created = await create_ready_planner(client, "planner-context-sanitized@example.com")
+    service = PlannerService(
+        store=client.app.state.store,
+        settings=client.app.state.settings,
+    )
+
+    context = await service._build_agent_context(
+        created["id"],
+        user_text="what changed?",
+        trigger="user_message",
+        turn_count=1,
+    )
+
+    assert context["recent_messages"]
+    assert all(message["role"] != "tool" for message in context["recent_messages"])
+    assert context["recent_tool_observations"]
+    assert all("content" not in observation for observation in context["recent_tool_observations"])
+    assert any(observation.get("document_type") == "budget_plan" for observation in context["recent_tool_observations"])
+
+
+@pytest.mark.asyncio
+async def test_invalid_provider_step_uses_repair_before_local_fallback(client):
+    from app.providers.planner_agent import GeminiValidationFailure
+
+    class RepairingProvider:
+        enabled = True
+        repaired = False
+
+        async def decide(self, context, trace_context=None):
+            raise GeminiValidationFailure("invalid structured step", '{"tool":"replace_trip_memo"}')
+
+        async def repair(self, *, context, validation_errors, previous_output, trace_context=None):
+            self.repaired = True
+            return PlannerAgentStepV1(
+                intent="change_preferences",
+                requires_document_edit=True,
+                affected_documents=["trip_memo"],
+                assistant_text="Memo repaired and expanded.",
+                actions=[
+                    {
+                        "tool": "replace_trip_memo",
+                        "args": {
+                            "content": {
+                                "markdown": "### Repaired memo\n\nStructured repair produced a useful memo update.",
+                                "caption": "Repaired memo",
+                                "source": "Planner repair",
+                                "items": 1,
+                                "tiles": [{"src": "/landing/indonesia-map.png", "alt": "Repaired memo"}],
+                            }
+                        },
+                    },
+                    {"tool": "validate_documents", "args": {}},
+                ],
+            )
+
+    user = signup(client, "planner-repair-provider@example.com")
+    session, item = await create_planner_seed(client, user["id"], name="Mount Bromo", region="East Java", categories=["gunung"])
+    created = client.post(
+        f"/api/planner-sessions/from-trip-creation/{session['id']}",
+        json=planner_payload_for_duration(item["id"], 3, traveler_count=2),
+    ).json()["session"]
+    provider = RepairingProvider()
+    service = PlannerService(
+        store=client.app.state.store,
+        settings=client.app.state.settings,
+        planner_provider=provider,
+    )
+
+    response = await service.send_message(
+        created["id"],
+        user,
+        PlannerMessageRequest(text="please improve the trip memo so it is more descriptive"),
+    )
+
+    assert provider.repaired is True
+    planner = response["session"]
+    assert planner["documents"]["trip_memo"]["version"] == created["documents"]["trip_memo"]["version"] + 1
+    assert "Repaired memo" in planner["documents"]["trip_memo"]["content"]["markdown"]
+    assert planner["messages"][-1]["content"] == "Trip memo was updated from the latest canonical plan. Documents validated successfully."
+
+
+@pytest.mark.asyncio
+async def test_enabled_provider_failure_does_not_use_keyword_fallback_mutation(client):
+    from app.providers.planner_agent import GeminiValidationFailure
+
+    class FailingProvider:
+        enabled = True
+
+        async def decide(self, context, trace_context=None):
+            raise GeminiValidationFailure("provider timed out", "")
+
+    user = signup(client, "planner-provider-failure@example.com")
+    session, item = await create_planner_seed(client, user["id"], name="Mount Bromo", region="East Java", categories=["gunung"])
+    created = client.post(
+        f"/api/planner-sessions/from-trip-creation/{session['id']}",
+        json=planner_payload_for_duration(item["id"], 3, traveler_count=2),
+    ).json()["session"]
+    before_versions = {
+        doc_type: doc["version"]
+        for doc_type, doc in created["documents"].items()
+    }
+    service = PlannerService(
+        store=client.app.state.store,
+        settings=client.app.state.settings,
+        planner_provider=FailingProvider(),
+    )
+
+    response = await service.send_message(
+        created["id"],
+        user,
+        PlannerMessageRequest(text="add day 4 with a unique destination nearby"),
+    )
+
+    planner = response["session"]
+    assert {
+        doc_type: doc["version"]
+        for doc_type, doc in planner["documents"].items()
+    } == before_versions
+    assert planner["duration_days"] == 3
+    assert "could not get a reliable planner decision" in planner["messages"][-1]["content"]
 
 
 @pytest.mark.asyncio
@@ -569,13 +1065,13 @@ async def test_invalid_gemini_itinerary_payload_falls_back_to_valid_duration_rec
                                 "per_person_idr": 600_000,
                                 "categories": [None, None],
                                 "daily": [
-                                    None,
-                                    None,
-                                    None,
-                                    '{"day": 4, "title": "Waterfall day", "route": "Bromo to waterfall", "amounts": {"transport": 120000, "meals": 80000}}',
-                                ],
-                            }
-                        },
+                                {"day": 1, "title": "Malformed first day", "route": "Bromo", "amounts": "about IDR 200,000"},
+                                None,
+                                None,
+                                '{"day": 4, "title": "Waterfall day", "route": "Bromo to waterfall", "amounts": {"transport": 120000, "meals": 80000}}',
+                            ],
+                        }
+                    },
                     },
                 ],
             )
@@ -605,47 +1101,12 @@ async def test_invalid_gemini_itinerary_payload_falls_back_to_valid_duration_rec
     days = planner["documents"]["full_itinerary"]["content"]["days"]
     assert [day["day"] for day in days] == [1, 2, 3, 4]
     assert days[3]["title"] == "Kampung Warna-Warni Jodipan"
-    assert len(planner["documents"]["budget_plan"]["content"]["daily"]) == 4
+    budget_daily = planner["documents"]["budget_plan"]["content"]["daily"]
+    assert len(budget_daily) == 4
+    assert budget_daily[3]["title"] == "Kampung Warna-Warni Jodipan"
+    assert len(set(daily_totals(planner["documents"]["budget_plan"]["content"]))) > 1
     assert planner["documents"]["trip_memo"]["valid"] is True
     assert not [event for event in planner["events"] if event["type"] in {"tool_failed", "run_failed"}]
-
-
-@pytest.mark.asyncio
-async def test_explicit_memo_improvement_is_not_treated_as_chat_only(client):
-    class ChatOnlyProvider:
-        enabled = True
-
-        async def decide(self, context, trace_context=None):
-            return PlannerAgentStepV1(
-                intent="answer_question",
-                assistant_text="I noted that.",
-                stop=True,
-            )
-
-    user = signup(client, "planner-memo-coerce@example.com")
-    session, item = await create_planner_seed(client, user["id"], name="Mount Bromo", region="East Java", categories=["gunung"])
-    created = client.post(
-        f"/api/planner-sessions/from-trip-creation/{session['id']}",
-        json=planner_payload_for_duration(item["id"], 3, traveler_count=2),
-    ).json()["session"]
-    memo_before = created["documents"]["trip_memo"]["version"]
-    service = PlannerService(
-        store=client.app.state.store,
-        settings=client.app.state.settings,
-        planner_provider=ChatOnlyProvider(),
-    )
-
-    response = await service.send_message(
-        created["id"],
-        user,
-        PlannerMessageRequest(text="make memo more descriptive"),
-    )
-
-    planner = response["session"]
-    assert planner["status"] == "ready_to_review"
-    assert planner["documents"]["trip_memo"]["version"] > memo_before
-    assert "Planning assumptions" in planner["documents"]["trip_memo"]["content"]["markdown"]
-    assert planner["messages"][-1]["content"] == "I made the trip memo more descriptive and validated the updated planner documents."
 
 
 @pytest.mark.asyncio

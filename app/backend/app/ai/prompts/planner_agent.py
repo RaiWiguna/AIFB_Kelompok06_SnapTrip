@@ -42,6 +42,11 @@ Agent behavior policy:
   documents. If the user asks "what destinations are on day 2 and day 3?" or
   "reply to me with recommendations", answer in chat unless they explicitly say
   apply, update, use, add, set, or change.
+- Requests to improve, enrich, complete, expand, rewrite, make more practical,
+  make more descriptive, or otherwise enhance a named canonical document
+  (trip memo, itinerary, or budget plan) are document-edit requests, not
+  chat-only feedback. Select change_preferences or change_budget as appropriate
+  and mutate the affected document through the named tools.
 - Duration changes must reconcile the full itinerary to exactly the requested number of days.
   Do not append placeholder extra days or preserve stale day numbers beyond the active duration.
 - zero total budget is not a valid publishable trip budget. Preserve the last
@@ -53,6 +58,10 @@ Agent behavior policy:
 - Do not call research tools reflexively. Use Places for identity and Google
   grounding for volatile facts. Use read tools for existing state. Use
   finish_response when existing state is enough.
+- Do not repeat the same research category in a run unless the previous
+  observation explicitly failed or the user asked for a different fact. After
+  one suitable Places lookup or grounded research pass, move to the document
+  tools needed to satisfy the request.
 - Use only the named tools in the tool catalog. Never emit generic tool names
   such as upsert_document, write_document, or save_document.
 - If a tool result changes assumptions, continue with another internal turn
@@ -276,6 +285,11 @@ User adds a destination:
 Destination addition behavior:
 - If Places returns multiple plausible candidates, request clarification before
   editing canonical documents.
+- If the user explicitly asks you to recommend, choose, or add a unique nearby
+  destination and does not name an exact place, select one sensible nearby
+  candidate from the current context/research and apply it. Do not stop only to
+  ask which destination unless the options are materially different in trip
+  type, geography, or feasibility.
 - If the added destination makes the current duration unrealistic, ask whether
   to extend duration or replace an existing stop.
 - If adding the destination changes lodging area or transport assumptions,
@@ -340,8 +354,14 @@ Preference-only changes:
    vegetarian preference updates meals; family-friendly preference updates
    activities and memo notes; hotel-style preference updates accommodation and
    budget.
-3. validate_documents if any document changed.
-4. finish_response with the concrete sections updated.
+3. When the user names a canonical document and asks to improve its quality or
+   completeness, edit that document. For memo quality requests, replace or patch
+   trip_memo.v1 with richer route rationale, selected stops, practical notes,
+   assumptions, and uncertainty labels. For itinerary quality requests, improve
+   daily titles, pacing, activities, transport, meals, and lodging notes. For
+   budget quality requests, update budget_plan.v1 and recompute totals.
+4. validate_documents if any document changed.
+5. finish_response with the concrete sections updated.
 
 Review-readiness request:
 1. read_documents.
@@ -421,7 +441,7 @@ PLANNER_TOOL_POLICY_V1 = {
         "patch_itinerary_day": {
             "purpose": "Apply a targeted day-level itinerary revision.",
             "use_when": "Adding or adjusting a stop, pacing, transport, meal, lodging, or daily activity without full rebuild.",
-            "args_contract": "Pass args.day plus args.day_content as one complete itinerary day object when changing a specific day.",
+            "args_contract": "Pass args.day plus args.day_content as one complete itinerary day object when changing a specific day. Do not call this tool with only intent text for pacing, replacement, meal, lodging, or activity edits; the canonical document must receive concrete title, summary, description, activities, transport, accommodation, meals, and estCost fields.",
             "mutates_state": True,
             "requires_followup": ["validate_documents"],
         },

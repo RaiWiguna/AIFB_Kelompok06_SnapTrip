@@ -24,6 +24,9 @@ def test_planner_prompt_defines_stateful_agent_contract():
     assert "answer_question" in prompt
     assert "recommend_destinations" in prompt
     assert "question-only messages must not mutate canonical" in prompt
+    assert "enhance a named canonical document" in prompt
+    assert "document-edit requests, not" in prompt
+    assert "Do not repeat the same research category" in prompt
     assert "exactly the requested number of days" in prompt
     assert "zero total budget is not a valid publishable trip budget" in prompt
     assert "Readiness behavior" in prompt
@@ -78,6 +81,7 @@ def test_planner_support_prompts_cover_context_repair_research_and_flow():
     assert "Initial auto-run" in PLANNER_ACTION_SELECTION_V1
     assert "Global per-run loop" in PLANNER_ACTION_SELECTION_V1
     assert "User adds a destination" in PLANNER_ACTION_SELECTION_V1
+    assert "select one sensible nearby" in PLANNER_ACTION_SELECTION_V1
     assert "Duration/date behavior" in PLANNER_ACTION_SELECTION_V1
     assert "Budget behavior" in PLANNER_ACTION_SELECTION_V1
     assert "hard constraints" in PLANNER_ACTION_SELECTION_V1
@@ -85,6 +89,8 @@ def test_planner_support_prompts_cover_context_repair_research_and_flow():
     assert "Max total, max per-person, and daily-cap budgets must not be exceeded" in PLANNER_ACTION_SELECTION_V1
     assert "budget_mode" in PLANNER_ACTION_SELECTION_V1
     assert "Preference-only changes" in PLANNER_ACTION_SELECTION_V1
+    assert "memo quality requests" in PLANNER_ACTION_SELECTION_V1
+    assert "budget quality requests" in PLANNER_ACTION_SELECTION_V1
     assert "Review-readiness request" in PLANNER_ACTION_SELECTION_V1
     assert "Unsupported action" in PLANNER_ACTION_SELECTION_V1
     assert "Clarification cases" in PLANNER_ACTION_SELECTION_V1

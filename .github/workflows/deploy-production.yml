@@ -1,9 +1,6 @@
 name: Deploy Production
 
 on:
-  push:
-    branches:
-      - dev
   workflow_run:
     workflows: ["CI"]
     types:
@@ -86,8 +83,8 @@ jobs:
       always() &&
       ((github.event_name == 'workflow_run' &&
         github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.head_branch == 'main') ||
-       ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+        contains(fromJSON('["main", "dev"]'), github.event.workflow_run.head_branch)) ||
+       (github.event_name == 'workflow_dispatch' &&
         needs.validate.result == 'success'))
     runs-on: ubuntu-latest
     environment: production
@@ -207,7 +204,7 @@ jobs:
             printf '%s\n' "GEMINI_MODEL=gemini-3.5-flash"
             printf '%s\n' "GOOGLE_PLACES_API_KEY=$PRODUCTION_GOOGLE_PLACES_API_KEY"
             printf '%s\n' "NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY=$PRODUCTION_GOOGLE_MAPS_BROWSER_API_KEY"
-            printf '%s\n' "AI_PROVIDER_TIMEOUT_SECONDS=30"
+            printf '%s\n' "AI_PROVIDER_TIMEOUT_SECONDS=60"
             printf '%s\n' "AI_OBSERVABILITY_ENABLED=true"
             printf '%s\n' "AI_RAW_LLM_OBSERVABILITY=true"
             printf '%s\n' "AI_RAW_LLM_LOGS=false"

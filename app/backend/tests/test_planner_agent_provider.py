@@ -1,4 +1,5 @@
 import sys
+import time
 import types as pytypes
 
 import pytest
@@ -60,11 +61,27 @@ async def test_gemini_planner_provider_rejects_unknown_tool_names(monkeypatch, c
         await provider.decide({"user_text": "add trip memo"})
 
 
-def install_fake_gemini_planner(monkeypatch, response_text: str):
+@pytest.mark.asyncio
+async def test_gemini_planner_provider_times_out_slow_provider(monkeypatch, client):
+    install_fake_gemini_planner(monkeypatch, response_text="", delay_seconds=2)
+    settings = client.app.state.settings
+    monkeypatch.setattr(settings, "use_gemini", True)
+    monkeypatch.setattr(settings, "gemini_api_key", "fake-key")
+    monkeypatch.setattr(settings, "ai_provider_timeout_seconds", 1)
+
+    provider = GeminiPlannerProvider(settings)
+
+    with pytest.raises(GeminiValidationFailure, match="timed out"):
+        await provider.decide({"user_text": "plan this trip"})
+
+
+def install_fake_gemini_planner(monkeypatch, response_text: str, delay_seconds: float = 0):
     class FakeClient:
         class models:
             @staticmethod
             def generate_content(*, model, contents, config):
+                if delay_seconds:
+                    time.sleep(delay_seconds)
                 return pytypes.SimpleNamespace(text=response_text, parsed=None)
 
     class FakeGenerateContentConfig:

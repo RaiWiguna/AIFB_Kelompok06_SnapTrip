@@ -168,12 +168,30 @@ class GeminiRecommendationProvider:
         )
 
         try:
-            response = await asyncio.to_thread(
-                client.models.generate_content,
-                model=self.settings.gemini_model,
-                contents=contents,
-                config=config,
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.models.generate_content,
+                    model=self.settings.gemini_model,
+                    contents=contents,
+                    config=config,
+                ),
+                timeout=max(int(self.settings.ai_provider_timeout_seconds), 1),
             )
+        except TimeoutError as exc:
+            await self._emit(
+                trace_context,
+                event=f"{event_prefix(trace_context)}_completed",
+                stage=stage_name(trace_context),
+                status="error",
+                duration_ms=elapsed_ms(start_ms),
+                payload={
+                    "model": self.settings.gemini_model,
+                    "schema_model": schema_model.__name__,
+                    "error_class": exc.__class__.__name__,
+                    "safe_message": "Gemini provider request timed out",
+                },
+            )
+            raise GeminiValidationFailure("Gemini provider request timed out.", "") from exc
         except Exception as exc:
             await self._emit(
                 trace_context,
