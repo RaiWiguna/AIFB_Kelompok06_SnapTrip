@@ -41,3 +41,11 @@ draft/
 Thumbs.db
 .idea/
 .vscode/
+
+training/train_v2.tar.gz
+
+training/data/train/
+
+**/__pycache__/
+
+*.log

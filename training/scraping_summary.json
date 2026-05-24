@@ -1,0 +1,41 @@
+{
+  "generated_at": "2026-05-23 Asia/Jakarta",
+  "folders": {
+    "waterfall": {
+      "image_count": 1500,
+      "metadata_files": [
+        "metadata.csv",
+        "metadata.jsonl",
+        "openverse_metadata.csv",
+        "openverse_metadata.jsonl"
+      ],
+      "sources": [
+        "Wikimedia Commons",
+        "Openverse"
+      ],
+      "topic_filter": "waterfall/air terjun/cascade/curug in title, tags, category, or metadata"
+    },
+    "localtourism": {
+      "image_count": 1500,
+      "metadata_files": [
+        "openverse_metadata.csv",
+        "openverse_metadata.jsonl"
+      ],
+      "sources": [
+        "Openverse"
+      ],
+      "topic_filter": "Indonesia local tourism landmarks/destinations such as Borobudur, Prambanan, Monas, Taman Mini, temples, parks, beaches, and heritage sites"
+    }
+  },
+  "image_processing": {
+    "format": "JPEG",
+    "max_side_px": 768,
+    "jpeg_quality": 72,
+    "clarity_filter": "Pillow edge-stddev threshold applied before saving",
+    "noise_filter": "metadata regex excludes common people/animal/tourist/crowd terms where detected"
+  },
+  "scripts": [
+    "scripts/scrape_commons_dataset.py",
+    "scripts/scrape_openverse_dataset.py"
+  ]
+}
