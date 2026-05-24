@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Document status | Canonical replacement PRD for implementation |
-| Last updated | 2026-05-08 |
+| Last updated | 2026-05-24 |
 | Primary timezone | Asia/Jakarta |
 | Scope type | MVP implementation-ready technical PRD |
 | Canonical location | `.agents/PRD.md` |
@@ -49,6 +49,15 @@ Core surfaces:
 - Accepted Trip Plan detail containing structured Trip Memo, Full Itinerary, and Budget Plan documents.
 - Share invite links so other users can join or view a trip plan.
 
+Current Flow 2 to Flow 3 contract:
+
+- Flow 2 shows recommendation cards without default pre-selection.
+- Planner entry requires exactly one selected destination, a valid start/end date range, and traveler count.
+- Flow 3 creates a stateful planner session and auto-submits: `Plan me a {duration} day {destination} trip for {traveler_count} people.`
+- Planner chat is agentic and stateful: one user message can produce multiple internal tool turns, document edits, event rows, and assistant responses.
+- Trip Memo, Full Itinerary, and Budget Plan are persisted as versioned structured documents and must validate before review/acceptance.
+- Places and Gemini remain backend-only; user-requested destination additions can use Places Text Search/Details plus grounded web research for current context and estimates.
+
 Hosted runtime:
 
 - Frontend: Next.js, Node.js, TypeScript, Vitest.
@@ -92,6 +101,7 @@ All application data mutations must go through the FastAPI backend. The frontend
 - Recommendation generation returns structured destination cards with description, opening hours, estimated cost, location metadata, and image snaps.
 - Gemini recommendation output is rejected or repaired when it does not satisfy the structured schema.
 - Planner agent can revise itinerary, budget, and memo documents based on conversation constraints.
+- Planner agent turns are observable in the frontend through sanitized run, tool, validation, document commit, compaction, and assistant-message events.
 - Final accepted Trip Plan always contains all three required structured documents.
 - Explore only shows trip plans explicitly marked public.
 - Share invite links allow invited users to access the trip plan and show participant membership.

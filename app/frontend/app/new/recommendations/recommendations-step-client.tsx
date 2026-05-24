@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  CalendarDays,
   Clock,
   Coins,
   ExternalLink,
@@ -17,11 +18,13 @@ import {
   Sparkles,
   Star,
   Target,
+  Users,
 } from "lucide-react"
 import { AppHeader, type AppHeaderUser } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { StepIndicator, NEW_TRIP_STEPS } from "@/components/step-indicator"
 import { IMG } from "@/lib/data"
+import { createPlannerSessionFromTripCreation } from "@/lib/api/planner-sessions"
 import { generateRecommendations, selectRecommendations } from "@/lib/api/recommendations"
 import type { RecommendationCardDisplay, TripCreationSessionDisplay } from "@/lib/api/types"
 
@@ -34,7 +37,12 @@ export function RecommendationsStepClient({
 }) {
   const router = useRouter()
   const [items, setItems] = useState<RecommendationCardDisplay[]>(initialSession.recommendations?.items || [])
-  const [selectedIds, setSelectedIds] = useState<string[]>(initialSession.selectedRecommendationIds)
+  const [selectedIds, setSelectedIds] = useState<string[]>(initialSession.selectedRecommendationIds.slice(0, 1))
+  const [travelStartDate, setTravelStartDate] = useState(initialSession.travelStartDate || "")
+  const [travelEndDate, setTravelEndDate] = useState(initialSession.travelEndDate || "")
+  const [travelerCount, setTravelerCount] = useState(
+    initialSession.travelerCount ? String(initialSession.travelerCount) : "",
+  )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
@@ -48,9 +56,6 @@ export function RecommendationsStepClient({
         const generated = await generateRecommendations(initialSession.id, selectedIds)
         if (!cancelled) {
           setItems(generated.items)
-          if (!selectedIds.length) {
-            setSelectedIds(generated.items.slice(0, 2).map((item) => item.id))
-          }
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Recommendation generation failed")
@@ -65,28 +70,46 @@ export function RecommendationsStepClient({
   }, [initialSession.id, items.length, selectedIds])
 
   function toggle(itemId: string) {
-    setSelectedIds((current) =>
-      current.includes(itemId) ? current.filter((id) => id !== itemId) : [...current, itemId],
-    )
+    setSelectedIds((current) => (current.includes(itemId) ? [] : [itemId]))
   }
 
   async function openPlanner() {
-    if (!selectedIds.length) {
-      setError("Select at least one destination.")
+    const people = Number.parseInt(travelerCount, 10)
+    if (selectedIds.length !== 1) {
+      setError("Select exactly one destination.")
+      return
+    }
+    if (!travelStartDate || !travelEndDate || travelEndDate < travelStartDate) {
+      setError("Choose a valid start and end date.")
+      return
+    }
+    if (!Number.isFinite(people) || people < 1 || people > 20) {
+      setError("Choose a traveler count between 1 and 20.")
       return
     }
     setBusy(true)
     setError("")
     try {
       await selectRecommendations(initialSession.id, selectedIds)
-      router.push(`/plan/${initialSession.id}`)
+      const planner = await createPlannerSessionFromTripCreation(initialSession.id, {
+        recommendation_item_id: selectedIds[0],
+        travel_start_date: travelStartDate,
+        travel_end_date: travelEndDate,
+        traveler_count: people,
+      })
+      router.push(`/plan/${planner.sessionId}`)
       router.refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save selected destinations")
+      setError(err instanceof Error ? err.message : "Could not open AI Trip Planner")
     } finally {
       setBusy(false)
     }
   }
+
+  const people = Number.parseInt(travelerCount, 10)
+  const datesValid = Boolean(travelStartDate && travelEndDate && travelEndDate >= travelStartDate)
+  const peopleValid = Number.isFinite(people) && people >= 1 && people <= 20
+  const canOpenPlanner = selectedIds.length === 1 && datesValid && peopleValid
 
   return (
     <div className="relative flex min-h-screen flex-col bg-background text-foreground">
@@ -163,14 +186,58 @@ export function RecommendationsStepClient({
 
         <div className="mx-auto mt-6 inline-flex items-center gap-2 rounded-full bg-card px-4 py-2 text-[12.5px] text-foreground/80 ring-1 ring-border">
           <Lightbulb className="size-3.5 text-accent" aria-hidden />
-          Tip: You can fine-tune these picks in the next step.
+          Tip: choose one destination, dates, and group size before opening the agent planner.
         </div>
 
-        <div className="mt-6 flex items-center justify-between gap-4 rounded-3xl bg-card p-4 ring-1 ring-border">
-          <p className="text-[13px] text-muted-foreground">
-            <span className="font-medium text-foreground">{selectedIds.length} selected</span> - Selected destinations
-            seed your AI Trip Planner session.
-          </p>
+        <div className="mt-6 grid gap-4 rounded-3xl bg-card p-4 ring-1 ring-border lg:grid-cols-[1fr_auto] lg:items-end">
+          <div>
+            <p className="text-[13px] text-muted-foreground">
+              <span className="font-medium text-foreground">{selectedIds.length} selected</span> - Select exactly one
+              destination for the AI Trip Planner session.
+            </p>
+            <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_150px]">
+              <label className="block">
+                <span className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-foreground">
+                  <CalendarDays className="size-3.5 text-primary" aria-hidden />
+                  Start date
+                </span>
+                <input
+                  type="date"
+                  value={travelStartDate}
+                  onChange={(event) => setTravelStartDate(event.target.value)}
+                  className="h-10 w-full rounded-full bg-secondary px-3 text-[13px] text-foreground ring-1 ring-border outline-none focus:ring-primary"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-foreground">
+                  <CalendarDays className="size-3.5 text-primary" aria-hidden />
+                  End date
+                </span>
+                <input
+                  type="date"
+                  value={travelEndDate}
+                  min={travelStartDate || undefined}
+                  onChange={(event) => setTravelEndDate(event.target.value)}
+                  className="h-10 w-full rounded-full bg-secondary px-3 text-[13px] text-foreground ring-1 ring-border outline-none focus:ring-primary"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-foreground">
+                  <Users className="size-3.5 text-primary" aria-hidden />
+                  People
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={travelerCount}
+                  onChange={(event) => setTravelerCount(event.target.value)}
+                  className="h-10 w-full rounded-full bg-secondary px-3 text-[13px] text-foreground ring-1 ring-border outline-none focus:ring-primary"
+                  placeholder="e.g. 2"
+                />
+              </label>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             <Link
               href={`/new/categories?session=${initialSession.id}`}
@@ -182,7 +249,7 @@ export function RecommendationsStepClient({
             <button
               type="button"
               onClick={openPlanner}
-              disabled={busy || !selectedIds.length}
+              disabled={busy || !canOpenPlanner}
               className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-[13.5px] font-medium text-primary-foreground hover:bg-[#0b2a25] disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground"
             >
               {busy ? "Saving..." : "Open AI Trip Planner"}

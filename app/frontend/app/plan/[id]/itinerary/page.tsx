@@ -5,14 +5,14 @@ import { AuthenticatedAppHeader } from "@/components/authenticated-app-header"
 import { TripBackLink } from "@/components/trip-back-link"
 import { TripItineraryBody } from "@/components/trip-itinerary-body"
 import { ApiError } from "@/lib/api/client"
-import { getPlannerPreview } from "@/lib/api/planner-preview"
+import { getPlannerSession } from "@/lib/api/planner-sessions"
 
 export default async function PlannerItineraryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const cookieHeader = (await cookies()).toString()
   let preview
   try {
-    preview = await getPlannerPreview(id, cookieHeader)
+    preview = await getPlannerSession(id, cookieHeader)
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       redirect(`/signin?next=${encodeURIComponent(`/plan/${id}/itinerary`)}&action=trips`)

@@ -4,11 +4,27 @@
 | --- | --- |
 | Document status | Active handoff |
 | Last updated | 2026-05-24 |
-| Branch | `feat/flow2-places-two-step-gemini` |
-| Purpose | Resume point after Flow 2 Places-ID grounding, two-step Gemini, and Flow 1-2 observability implementation |
+| Branch | `feat/agentic-trip-planner` |
+| Purpose | Resume point after first stateful multi-turn AI Trip Planner implementation slice |
 
 ## 1. Completed This Session
 
+- Implemented the first Phase 11 stateful AI Trip Planner slice:
+  - created `feat/agentic-trip-planner`,
+  - added planner session/message/run/event/document/version/research-fact memory and Mongo store collections plus indexes,
+  - added strict Pydantic schemas for planner start, messages, acceptance, invites, `trip_memo.v1`, `full_itinerary.v1`, `budget_plan.v1`, and planner agent actions,
+  - added FastAPI planner session routes for creation from trip-creation session, snapshot, message turns, event replay/SSE, accept, invite create, invite preview, invite join, and invite revoke,
+  - added deterministic/provider-boundary planner service with stateful runs, tool lifecycle events, document validation/commit events, research facts, context compaction events, document versioning, direct chat responses, and document patching,
+  - added planner prompt module placeholders for system, context builder, repair, compaction, grounded research, and tool policy,
+  - changed Flow 2 selection request validation to exactly one selected recommendation,
+  - changed `/new/recommendations` so no destination is auto-selected and planner entry requires one destination, date range, and traveler count,
+  - changed planner frontend routes to use real `/api/planner-sessions` snapshots instead of `/api/planner-preview`,
+  - replaced scripted planner timers with backend event/message reduction in the chat timeline,
+  - removed the old planner greeting and suggested prompt buttons from the empty chat state,
+  - enabled review/accept when all three structured planner documents validate,
+  - added frontend planner session API helper and event reducer,
+  - added backend planner session tests,
+  - added `docs/adr/0013-agentic-trip-planner-runtime-state-and-observability.md`.
 - Created branch `feat/snaptrip-foundation` from `feat/snaptrip-prd-replacement`.
 - Implemented Phase 1 root workflow:
   - root `package.json` orchestration,
@@ -157,7 +173,10 @@
 - Classifier local/test default is `CLASSIFIER_MODE=mock`; production runtime is configured for `CLASSIFIER_MODE=real` with the tracked MobileNetV4 Medium v2 artifact copied into the backend image.
 - Root `npm run test` runs backend, frontend, and Playwright; Playwright now starts memory-mode backend and frontend dev servers for integrated product journeys and refuses to reuse stale local servers.
 - The test-only seeding API is available only under `APP_ENV=test` and should not be promoted to development or production routes.
-- Real Gemini planner chat, persisted `trip_memo.v1`, `full_itinerary.v1`, `budget_plan.v1`, Trip Plan acceptance, invites, and participants remain Phase 11 scope.
+- Real Gemini-backed planner execution remains Phase 11 follow-up work; persisted planner documents, Trip Plan acceptance, invites, and participant writes now have first-slice backend/frontend support.
+- First-slice planner persistence, acceptance, invites, and participant writes now exist. Real Gemini-backed planner loop remains a follow-up; the current implementation uses deterministic tool execution behind the same session/tool/event/document boundary.
+- `/plan/{id}` now expects a planner session ID. Flow 2 creates the planner session from the selected trip-creation session and routes to the returned planner session ID.
+- `planner-preview` still exists for backward compatibility/tests, but new planner UI routes use `/api/planner-sessions`.
 - Static frontend image assets are display fallbacks only; they must not be sent to classifier source-image APIs.
 - Phase 10 production deploy uses `snaptrip.site`, `api.snaptrip.site`, `/opt/snaptrip/hosted`, GitHub Actions, source-archive releases, Docker Compose, and Caddy.
 - Production deploy requires real Gemini and Google Places secrets before first deploy. `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY` is the only frontend-exposed provider key.
@@ -305,6 +324,19 @@ Verification after Flow 1-2 observability implementation:
 - `npm run docker:config` passed and confirmed remote production runtime includes `GEMINI_MODEL=gemini-3.5-flash` plus `AI_OBSERVABILITY_ENABLED=true`, `AI_RAW_LLM_OBSERVABILITY=true`, and `AI_RAW_LLM_LOGS=false`.
 - `git diff --check` and staged diff check passed; Git reported only Windows line-ending normalization warnings.
 
+Verification after first agentic planner slice:
+
+- `python -m compileall app/backend/app` passed.
+- `cd app/backend; .\.venv\Scripts\python.exe -m pytest tests/test_planner_sessions.py tests/test_recommendations.py tests/test_trip_creation.py` passed: 32 passed.
+- `cd app/backend; .\.venv\Scripts\python.exe -m pytest` passed: 62 passed / 1 skipped.
+- `cd app/backend; .\.venv\Scripts\python.exe -m ruff check .` passed.
+- `cd app/frontend; npm run typecheck` passed.
+- `cd app/frontend; npm test` passed: 13 passed.
+- `cd app/frontend; npm run lint` passed with 3 pre-existing warnings / 0 errors.
+- `npm run test:e2e` passed: 8 Playwright tests.
+- `npm run build:backend` passed.
+- `npm run build:frontend` passed.
+
 ## 4. Known Caveats
 
 - Mongo runtime integration is implemented at the store level, but the current automated tests use the in-memory store. Future Phase 6 work should add testcontainers MongoDB/GridFS coverage.
@@ -318,7 +350,7 @@ Verification after Flow 1-2 observability implementation:
 - Some frontend routes and components still use mock data modules by design for static marketing imagery, landing-page examples, invite demo boundaries, and explicit Phase 11 placeholders.
 - Google Maps frontend rendering is implemented behind `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`; CI/local test defaults still pass without a Maps key by using the static fallback map.
 - The planner preview endpoint requires selected recommendations and intentionally returns `422` before destination selection.
-- Planner acceptance, invites, participant writes, and persisted structured planner documents remain intentionally unavailable even though preview document shapes are now rendered.
+- Planner acceptance, invites, participant writes, and persisted structured planner documents are no longer preview-only in the new planner session path. The old preview endpoint remains available only as a backward-compatible boundary.
 - No real secrets should be added to `.env.local`, `.env.local.example`, or deployment env examples.
 - ADRs under `docs/adr/` capture durable implementation caveats and follow-up hardening work without tying those decisions to roadmap phase labels.
 - `docs/adr/0008-integrated-product-journey-validation-boundary.md` freezes the test-only seed route and serial memory-mode E2E validation boundary.

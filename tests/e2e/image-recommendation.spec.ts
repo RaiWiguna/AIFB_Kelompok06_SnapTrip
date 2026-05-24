@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { pngUpload, signupViaApi } from "./helpers";
 
-test("uploads an image, classifies categories, selects recommendations, and opens planner preview", async ({ page }) => {
+test("uploads an image, classifies categories, selects one recommendation, and opens agentic planner", async ({ page }) => {
   await signupViaApi(page, "images");
 
   await page.goto("/new/upload");
@@ -21,11 +21,15 @@ test("uploads an image, classifies categories, selects recommendations, and open
   await expect(page).toHaveURL(/\/new\/recommendations\?session=/);
 
   await expect(page.getByText(/match/i).first()).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: /add to plan/i }).first().click();
+  await page.getByLabel(/start date/i).fill("2026-06-10");
+  await page.getByLabel(/end date/i).fill("2026-06-12");
+  await page.getByLabel(/people/i).fill("2");
   await page.getByRole("button", { name: /open ai trip planner/i }).click();
 
   await expect(page).toHaveURL(/\/plan\//);
-  await expect(page.getByText(/planner preview/i).first()).toBeVisible();
-  await expect(page.getByText("Trip Memo")).toBeVisible();
-  await expect(page.getByText("Full Itinerary")).toBeVisible();
-  await expect(page.getByText("Budget Plan")).toBeVisible();
+  await expect(page.getByText(/plan assistant/i).first()).toBeVisible();
+  await expect(page.getByText("Trip Memo", { exact: true })).toBeVisible();
+  await expect(page.getByText("Full Itinerary", { exact: true })).toBeVisible();
+  await expect(page.getByText("Budget Plan", { exact: true })).toBeVisible();
 });
