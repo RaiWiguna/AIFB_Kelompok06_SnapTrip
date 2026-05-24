@@ -48,6 +48,33 @@ The initial tool set is:
 - `finish_response`
 - `request_clarification`
 
+Planner decision-making is now intent-aware instead of keyword-scripted. Each turn resolves to a validated
+`planner_agent_step.v1` with an explicit intent, document-edit flag, affected documents, optional duration
+change, visible assistant text, and a bounded list of tool actions. Supported intents are:
+
+- `initial_plan`
+- `answer_question`
+- `recommend_destinations`
+- `change_duration`
+- `change_budget`
+- `add_destination`
+- `change_preferences`
+- `request_clarification`
+- `unsupported`
+
+Production-capable planner decisions use a backend-only Gemini structured-output provider. The provider receives a
+sanitized state snapshot built from planner session facts, latest documents, recent messages, and research facts.
+Local and automated tests keep a deterministic fallback provider that implements the same intent contract without
+real Gemini calls.
+
+The runtime enforces backend guardrails after the decision step:
+
+- question-only and recommendation-only turns must respond in chat without document mutations unless the user asks to apply/update/use/add;
+- duration changes update `plannerSessions.duration_days`, recompute `travel_end_date` from the existing start date, sync the trip-creation session, and rebuild itinerary/budget rows to the exact active day count;
+- itinerary validation rejects non-sequential days, duration mismatches, and placeholder "Added destination research" cards;
+- zero-budget requests are clarification cases and preserve the last valid budget document;
+- memo patches regenerate structured memo content instead of appending repeated raw "Latest adjustment" user text.
+
 The frontend consumes planner snapshots plus replayable event rows. It renders user and assistant messages, run lifecycle rows, active spinners, document commit rows, validation rows, and final assistant summaries without exposing raw tool arguments, raw provider payloads, API keys, cookies, or raw Gemini responses.
 
 ## Consequences
@@ -57,7 +84,7 @@ The frontend consumes planner snapshots plus replayable event rows. It renders u
 - Flow 2 destination selection is constrained to exactly one destination before planner creation.
 - Continue-to-review and Accept Plan are enabled only when all three structured documents validate.
 - Accepted Trip Plans can be created from planner documents and can produce invite links.
-- The deterministic local/test implementation exercises the same session, document, run, event, and tool boundaries that a real Gemini-backed loop will use.
+- The deterministic local/test implementation exercises the same session, intent, document, run, event, and tool boundaries as the Gemini-backed planner loop.
 
 ## Recovery Boundary
 

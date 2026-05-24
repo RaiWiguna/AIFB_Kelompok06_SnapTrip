@@ -9,6 +9,17 @@ DocumentType = Literal["trip_memo", "full_itinerary", "budget_plan"]
 PlannerStatus = Literal["idle", "working", "needs_input", "ready_to_review", "interrupted", "accepted"]
 Visibility = Literal["private", "invite_only", "public"]
 BudgetMode = Literal["estimated", "fixed_total", "max_total", "fixed_per_person", "max_per_person", "daily_cap"]
+PlannerIntent = Literal[
+    "initial_plan",
+    "answer_question",
+    "recommend_destinations",
+    "change_duration",
+    "change_budget",
+    "add_destination",
+    "change_preferences",
+    "request_clarification",
+    "unsupported",
+]
 
 
 class PlannerStartRequest(BaseModel):
@@ -147,7 +158,11 @@ class PlannerAgentAction(BaseModel):
 
 class PlannerAgentStepV1(BaseModel):
     schema_version: Literal["planner_agent_step.v1"] = "planner_agent_step.v1"
+    intent: PlannerIntent = "answer_question"
     assistant_text: str | None = None
     actions: list[PlannerAgentAction] = Field(default_factory=list)
+    requires_document_edit: bool = False
+    affected_documents: list[DocumentType] = Field(default_factory=list)
+    duration_days: int | None = Field(default=None, ge=1, le=90)
     stop: bool = False
     needs_user_input: bool = False

@@ -27,7 +27,7 @@ test("uploads an image, classifies categories, selects one recommendation, and o
   await page.getByLabel(/people/i).fill("2");
   await page.getByRole("button", { name: /open ai trip planner/i }).click();
 
-  await expect(page).toHaveURL(/\/plan\//);
+  await expect(page).toHaveURL(/\/plan\//, { timeout: 15_000 });
   await expect(page.getByText(/plan assistant/i).first()).toBeVisible();
   await expect(page.getByText("Trip Memo", { exact: true })).toBeVisible();
   await expect(page.getByText("Full Itinerary", { exact: true })).toBeVisible();

@@ -411,7 +411,7 @@ Execution list:
   - `budget_plan.v1`
 - Implement planner session backend. Status: first slice complete.
 - Implement backend planner tools. Status: first deterministic/provider-boundary slice complete.
-- Implement Gemini planner provider. Status: prompt modules and tool boundary added; real provider loop remains follow-up.
+- Implement Gemini planner provider. Status: structured-output planner decision provider added with deterministic local/test fallback.
 - Implement planner messages and document endpoints. Status: first slice complete.
 - Implement Trip Plan acceptance. Status: first slice complete.
 - Implement share invites and participants. Status: first slice complete for backend APIs.
