@@ -363,7 +363,11 @@ class PlannerService:
                 await self._emit_event(session["id"], "turn_started", f"Reasoning turn {turn_count}", run_id=run["id"], payload={})
                 session = await self.store.find_one("plannerSessions", id=session["id"]) or session
                 step = await self._plan_step(user_text, session=session, trigger=trigger, turn_count=turn_count, run_id=run["id"])
-                actions = [action.model_dump() for action in step.actions]
+                actions = self._prepare_actions(
+                    [action.model_dump() for action in step.actions],
+                    step=step,
+                    user_text=user_text,
+                )
                 if not actions:
                     await self._assistant_response(session["id"], run["id"], step.assistant_text or self._direct_response(user_text))
                     break
@@ -379,10 +383,17 @@ class PlannerService:
                         break
                     await self._execute_tool(session["id"], run["id"], action)
                 all_actions = [*actions, *completion_actions]
+                summary_text = self._summary_response(all_actions)
                 response_text = (
                     "I completed the missing planner documents and validated the trip memo, itinerary, and budget plan."
                     if completion_actions
-                    else step.assistant_text or self._summary_response(actions)
+                    else step.assistant_text
+                    if self._actions_touch_all_documents(all_actions)
+                    and step.assistant_text
+                    and not response_mentions_pending_document_work(step.assistant_text)
+                    else summary_text
+                    if self._actions_touch_all_documents(all_actions)
+                    else step.assistant_text or summary_text
                 )
                 has_mutation = any(action["tool"] in MUTATING_PLANNER_TOOLS for action in all_actions)
                 has_terminal_tool = any(action["tool"] in TERMINAL_PLANNER_TOOLS for action in all_actions)
@@ -449,10 +460,12 @@ class PlannerService:
         turn_count: int,
         run_id: str,
     ) -> PlannerAgentStepV1:
+        if is_memo_edit_request(user_text) and isinstance(self.planner_provider, GeminiPlannerProvider):
+            return await self._fallback_plan_step(user_text, session=session, trigger=trigger)
         if self.planner_provider.enabled:
             context = await self._build_agent_context(session["id"], user_text=user_text, trigger=trigger, turn_count=turn_count)
             try:
-                return await self.planner_provider.decide(
+                step = await self.planner_provider.decide(
                     context,
                     trace_context={
                         "trace_id": run_id,
@@ -464,9 +477,72 @@ class PlannerService:
                         "run_id": run_id,
                     },
                 )
+                return self._coerce_step_for_explicit_document_command(step, user_text)
             except GeminiValidationFailure:
                 return await self._fallback_plan_step(user_text, session=session, trigger=trigger)
         return await self._fallback_plan_step(user_text, session=session, trigger=trigger)
+
+    def _coerce_step_for_explicit_document_command(
+        self,
+        step: PlannerAgentStepV1,
+        user_text: str,
+    ) -> PlannerAgentStepV1:
+        tools = {action.tool for action in step.actions}
+        if is_memo_edit_request(user_text) and not tools & {"replace_trip_memo", "patch_memo_section"}:
+            return PlannerAgentStepV1(
+                intent="change_preferences",
+                requires_document_edit=True,
+                affected_documents=["trip_memo"],
+                assistant_text="I made the trip memo more descriptive and validated the updated planner documents.",
+                actions=[
+                    {"tool": "read_documents", "args": {}},
+                    {"tool": "patch_memo_section", "args": {"intent": user_text}},
+                    {"tool": "validate_documents", "args": {}},
+                    {"tool": "finish_response", "args": {}},
+                ],
+            )
+        return step
+
+    def _prepare_actions(
+        self,
+        actions: list[dict[str, Any]],
+        *,
+        step: PlannerAgentStepV1,
+        user_text: str,
+    ) -> list[dict[str, Any]]:
+        prepared = []
+        requested_duration = step.duration_days or extract_requested_duration_days(user_text)
+        for action in actions:
+            action = dict(action)
+            args = dict(action.get("args") or {})
+            if action.get("tool") in MUTATING_PLANNER_TOOLS:
+                args.setdefault("intent", user_text)
+                if requested_duration and action.get("tool") in {
+                    "replace_full_itinerary",
+                    "replace_budget_plan",
+                    "patch_itinerary_day",
+                    "patch_budget_category",
+                }:
+                    args.setdefault("duration_days", requested_duration)
+            action["args"] = args
+            prepared.append(action)
+
+        tools = {action.get("tool") for action in prepared}
+        duration_affects_documents = (
+            requested_duration is not None
+            and (step.requires_document_edit or step.intent in {"add_destination", "change_duration"})
+            and bool(tools & {"replace_full_itinerary", "patch_itinerary_day"})
+        )
+        if duration_affects_documents and not tools & {"replace_budget_plan", "patch_budget_category"}:
+            prepared.append(
+                {
+                    "tool": "patch_budget_category",
+                    "args": {"intent": user_text, "duration_days": requested_duration},
+                }
+            )
+        if duration_affects_documents and not tools & {"replace_trip_memo", "patch_memo_section"}:
+            prepared.append({"tool": "patch_memo_section", "args": {"intent": user_text}})
+        return prepared
 
     async def _fallback_plan_step(self, user_text: str, *, session: dict[str, Any], trigger: str) -> PlannerAgentStepV1:
         text = user_text.lower()
@@ -574,6 +650,18 @@ class PlannerService:
                     {"tool": "validate_documents", "args": {}},
                 ],
             )
+        if is_memo_edit_request(user_text):
+            return PlannerAgentStepV1(
+                intent="change_preferences",
+                requires_document_edit=True,
+                affected_documents=["trip_memo"],
+                assistant_text="I made the trip memo more descriptive and validated the updated planner documents.",
+                actions=[
+                    {"tool": "read_documents", "args": {}},
+                    {"tool": "patch_memo_section", "args": {"intent": user_text}},
+                    {"tool": "validate_documents", "args": {}},
+                ],
+            )
         return PlannerAgentStepV1(intent="answer_question", assistant_text=self._direct_response(user_text), stop=True)
 
     async def _build_agent_context(
@@ -671,10 +759,39 @@ class PlannerService:
 
     async def _replace_full_itinerary(self, planner_session_id: str, run_id: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
         if content := planner_document_arg(args or {}, "full_itinerary"):
+            session = await self.store.find_one("plannerSessions", id=planner_session_id)
             documents = await self._latest_documents(planner_session_id)
-            document = FullItineraryDocumentV1.model_validate(
-                normalize_itinerary_arg(content, documents.get("full_itinerary", {}).get("content") or {})
-            ).model_dump(by_alias=True)
+            previous = documents.get("full_itinerary", {}).get("content") or {}
+            requested_duration = requested_itinerary_duration(
+                args or {},
+                content,
+                fallback=int((session or {}).get("duration_days") or len(previous.get("days") or []) or 1),
+            )
+            if requested_duration != int((session or {}).get("duration_days") or 0):
+                session = await self._update_duration(planner_session_id, requested_duration)
+            normalized = normalize_itinerary_arg(content, previous)
+            if not itinerary_payload_has_usable_days(normalized):
+                destinations = await self._route_destinations(
+                    planner_session_id,
+                    requested_duration,
+                    str((args or {}).get("intent") or ""),
+                )
+                days = synthesize_itinerary(destinations)
+                start_date = (session or {}).get("travel_start_date") or date.today().isoformat()
+                for idx, day in enumerate(days, start=0):
+                    day["day"] = idx + 1
+                    day["dateLabel"] = date_label(start_date, idx)
+                    day["transport"]["from"] = "Start" if idx == 0 else days[idx - 1]["title"]
+                    day["accommodation"]["nights"] = 0 if idx == requested_duration - 1 else 1
+                normalized = {"days": days}
+            else:
+                normalized = reconcile_itinerary_duration(
+                    normalized,
+                    previous=previous,
+                    duration=requested_duration,
+                    start_date=(session or {}).get("travel_start_date") or date.today().isoformat(),
+                )
+            document = FullItineraryDocumentV1.model_validate(normalized).model_dump(by_alias=True)
             return await self._commit_document(planner_session_id, run_id, "full_itinerary", "full_itinerary.v1", document)
         context = await self._read_trip_context(planner_session_id)
         days = synthesize_itinerary(
@@ -688,12 +805,12 @@ class PlannerService:
     async def _replace_budget_plan(self, planner_session_id: str, run_id: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
         context = await self._read_trip_context(planner_session_id)
         if content := planner_document_arg(args or {}, "budget_plan"):
-            document = BudgetPlanDocumentV1.model_validate(content).model_dump()
             document = normalize_budget_content(
-                document,
+                normalize_budget_arg(content),
                 traveler_count=int(context["session"]["traveler_count"]),
                 duration_days=int(context["session"]["duration_days"]),
             )
+            document = BudgetPlanDocumentV1.model_validate(document).model_dump()
             return await self._commit_document(planner_session_id, run_id, "budget_plan", "budget_plan.v1", document)
         items = [context["recommendation_item"]] if context.get("recommendation_item") else []
         destinations = await self._route_destinations(planner_session_id, context["session"]["duration_days"], "")
@@ -773,8 +890,12 @@ class PlannerService:
         traveler_count = int((session or {}).get("traveler_count") or 1)
         duration = int((session or {}).get("duration_days") or 1)
         if content_arg := planner_document_arg(args, "budget_plan"):
-            content = BudgetPlanDocumentV1.model_validate(content_arg).model_dump()
-            content = normalize_budget_content(content, traveler_count=traveler_count, duration_days=duration)
+            content = normalize_budget_content(
+                normalize_budget_arg(content_arg),
+                traveler_count=traveler_count,
+                duration_days=duration,
+            )
+            content = BudgetPlanDocumentV1.model_validate(content).model_dump()
             return await self._commit_document(planner_session_id, run_id, "budget_plan", "budget_plan.v1", content)
         content = documents["budget_plan"]["content"]
         total = int(content.get("estimated_total_idr") or 0) or 500_000
@@ -1175,11 +1296,20 @@ class PlannerService:
             return "I need one clarification before changing the plan."
         if {"replace_trip_memo", "replace_full_itinerary", "replace_budget_plan"}.issubset(tools):
             return "I drafted the trip memo, full itinerary, and budget plan from your selected destination, dates, and group size."
+        if self._actions_touch_all_documents(actions):
+            return "I completed the missing planner documents and validated the trip memo, itinerary, and budget plan."
         if "places_text_search" in tools:
             return "I researched the added destination, updated the itinerary, adjusted the budget, and added a memo note."
         if "patch_budget_category" in tools:
             return "I updated the budget constraint, recalculated totals, and kept the structured documents valid."
         return "I updated the planner documents and validated the latest draft."
+
+    def _actions_touch_all_documents(self, actions: list[dict[str, Any]]) -> bool:
+        tools = {action["tool"] for action in actions}
+        itinerary = bool(tools & {"replace_full_itinerary", "patch_itinerary_day"})
+        budget = bool(tools & {"replace_budget_plan", "patch_budget_category"})
+        memo = bool(tools & {"replace_trip_memo", "patch_memo_section"})
+        return itinerary and budget and memo
 
 
 def validate_document_set(documents: dict[str, Any], *, expected_duration_days: int | None = None) -> dict[str, Any]:
@@ -1196,7 +1326,10 @@ def validate_document_set(documents: dict[str, Any], *, expected_duration_days: 
         if itinerary_errors and "full_itinerary" not in invalid:
             invalid.append("full_itinerary")
     if "budget_plan" in documents:
-        budget_errors = validate_budget_content(documents["budget_plan"].get("content") or {})
+        budget_errors = validate_budget_content(
+            documents["budget_plan"].get("content") or {},
+            expected_duration_days=expected_duration_days,
+        )
         if budget_errors and "budget_plan" not in invalid:
             invalid.append("budget_plan")
     if "trip_memo" in documents:
@@ -1216,6 +1349,8 @@ def validate_document_set(documents: dict[str, Any], *, expected_duration_days: 
 def validate_itinerary_content(content: dict[str, Any], *, expected_duration_days: int | None = None) -> list[str]:
     errors = []
     days = content.get("days") or []
+    if not all(isinstance(day, dict) for day in days):
+        return ["itinerary_days_must_be_objects"]
     day_numbers = [int(day.get("day") or 0) for day in days]
     expected_numbers = list(range(1, len(days) + 1))
     if day_numbers != expected_numbers:
@@ -1292,6 +1427,22 @@ def planner_document_arg(args: dict[str, Any], document_type: str) -> dict[str, 
     return None
 
 
+def requested_itinerary_duration(args: dict[str, Any], content: dict[str, Any], *, fallback: int) -> int:
+    for source in (args, content):
+        for key in ("duration_days", "duration", "days_count", "day_count"):
+            value = source.get(key)
+            if isinstance(value, int) and 1 <= value <= 90:
+                return value
+            if isinstance(value, str) and value.isdigit() and 1 <= int(value) <= 90:
+                return int(value)
+    if requested := extract_requested_duration_days(str(args.get("intent") or "")):
+        return requested
+    days = content.get("days")
+    if isinstance(days, list) and days and all(isinstance(day, dict) for day in days):
+        return min(max(len(days), 1), 90)
+    return max(min(fallback, 90), 1)
+
+
 def itinerary_day_arg(args: dict[str, Any]) -> dict[str, Any] | None:
     if full_document := planner_document_arg(args, "full_itinerary"):
         target_day = int(args.get("day") or args.get("day_number") or 0)
@@ -1328,15 +1479,53 @@ def normalize_itinerary_arg(content: dict[str, Any], previous: dict[str, Any]) -
     previous_days = {int(day.get("day") or 0): day for day in previous.get("days") or []}
     normalized_days = []
     for index, day in enumerate(content.get("days") or [], start=1):
+        if not isinstance(day, dict):
+            continue
         day_number = int(day.get("day") or index)
         normalized_days.append(fill_itinerary_day_defaults(day, previous_days.get(day_number, {}), day_number))
-    return {"days": normalized_days or list(previous_days.values())}
+    return {"days": normalized_days}
+
+
+def itinerary_payload_has_usable_days(content: dict[str, Any]) -> bool:
+    days = content.get("days") or []
+    if not days or not all(isinstance(day, dict) for day in days):
+        return False
+    for day in days:
+        title = str(day.get("title") or "").strip().lower()
+        if not title or title in {"...", "added destination research"}:
+            return False
+    return True
+
+
+def reconcile_itinerary_duration(
+    content: dict[str, Any],
+    *,
+    previous: dict[str, Any],
+    duration: int,
+    start_date: str,
+) -> dict[str, Any]:
+    existing = {int(day.get("day") or 0): day for day in content.get("days") or [] if isinstance(day, dict)}
+    previous_days = {int(day.get("day") or 0): day for day in previous.get("days") or [] if isinstance(day, dict)}
+    reconciled = []
+    for day_number in range(1, max(duration, 1) + 1):
+        source = existing.get(day_number) or previous_days.get(day_number) or {}
+        day = fill_itinerary_day_defaults(source, previous_days.get(day_number, {}), day_number)
+        day["day"] = day_number
+        day["dateLabel"] = date_label(start_date, day_number - 1)
+        day["transport"]["from"] = "Start" if day_number == 1 else reconciled[-1]["title"]
+        day["accommodation"]["nights"] = 0 if day_number == duration else 1
+        reconciled.append(day)
+    return {"days": reconciled}
 
 
 def fill_itinerary_day_defaults(day: dict[str, Any], previous: dict[str, Any], day_number: int) -> dict[str, Any]:
     title = str(day.get("title") or day.get("name") or previous.get("title") or f"Day {day_number} plan")
     description = str(day.get("description") or day.get("summary") or previous.get("description") or previous.get("summary") or f"Explore {title}.")
     region = str(day.get("region") or previous.get("region") or (previous.get("transport") or {}).get("to") or title)
+    transport = day.get("transport") if isinstance(day.get("transport"), dict) else {}
+    accommodation = day.get("accommodation") if isinstance(day.get("accommodation"), dict) else {}
+    meals = day.get("meals") if isinstance(day.get("meals"), dict) else {}
+    est_cost = day.get("estCost") if isinstance(day.get("estCost"), dict) else {}
     return {
         "day": day_number,
         "title": title,
@@ -1349,32 +1538,71 @@ def fill_itinerary_day_defaults(day: dict[str, Any], previous: dict[str, Any], d
         "transport": {
             **{"mode": "Drive", "from": "Previous stop" if day_number > 1 else "Start", "to": title, "durationLabel": "Flexible"},
             **(previous.get("transport") or {}),
-            **(day.get("transport") or {}),
+            **transport,
         },
         "accommodation": {
             **{"name": "Local stay to confirm", "area": region, "nights": 1},
             **(previous.get("accommodation") or {}),
-            **(day.get("accommodation") or {}),
+            **accommodation,
         },
-        "meals": dict(day.get("meals") or previous.get("meals") or {"lunch": "Local restaurant to confirm"}),
-        "estCost": dict(day.get("estCost") or previous.get("estCost") or {"value": "Budget TBD", "note": "estimate"}),
+        "meals": meals or dict(previous.get("meals") or {"lunch": "Local restaurant to confirm"}),
+        "estCost": est_cost or dict(previous.get("estCost") or {"value": "Budget TBD", "note": "estimate"}),
     }
 
 
 def normalize_itinerary_activities(value: Any, title: str, description: str, region: str) -> list[dict[str, Any]]:
     if isinstance(value, list) and value:
-        return [
-            {
+        normalized = []
+        for item in value:
+            if isinstance(item, str):
+                normalized.append(
+                    {
+                        "time": "09:00" if not normalized else "13:00",
+                        "title": item,
+                        "detail": description,
+                        "location": region,
+                        "duration": "3h",
+                    }
+                )
+                continue
+            if not isinstance(item, dict):
+                continue
+            normalized.append(
+                {
                 "time": str(item.get("time") or "09:00"),
                 "title": str(item.get("title") or f"Explore {title}"),
                 "detail": str(item.get("detail") or item.get("description") or description),
                 "location": item.get("location") or region,
                 "duration": item.get("duration") or "3h",
-            }
-            for item in value
-            if isinstance(item, dict)
-        ] or [{"time": "09:00", "title": f"Explore {title}", "detail": description, "location": region, "duration": "3h"}]
+                }
+            )
+        return normalized or [{"time": "09:00", "title": f"Explore {title}", "detail": description, "location": region, "duration": "3h"}]
     return [{"time": "09:00", "title": f"Explore {title}", "detail": description, "location": region, "duration": "3h"}]
+
+
+def normalize_budget_arg(content: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(content)
+    normalized["categories"] = coerce_dict_list(normalized.get("categories"))
+    normalized["daily"] = coerce_dict_list(normalized.get("daily"))
+    return normalized
+
+
+def coerce_dict_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    coerced = []
+    for item in value:
+        if isinstance(item, dict):
+            coerced.append(item)
+            continue
+        if isinstance(item, str):
+            try:
+                parsed = json.loads(item)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                coerced.append(parsed)
+    return coerced
 
 
 def item_categories(item: dict[str, Any] | None) -> list[str]:
@@ -1469,6 +1697,8 @@ def extract_budget_amount_idr(source_text: str) -> int | None:
 
 def extract_requested_duration_days(text: str) -> int | None:
     patterns = [
+        r"\b(?:add|tambah|tambahkan|extend|perpanjang|include|masukkan)\b.*?\bday\s*(\d{1,2})\b",
+        r"\bday\s*(\d{1,2})\b.*?\b(?:add|tambah|tambahkan|include|masukkan)\b",
         r"\b(?:make|ubah|jadikan|set|change|into|to)\D{0,16}(\d{1,2})\s*(?:day|days|hari)\b",
         r"\b(\d{1,2})\s*(?:day|days|hari)\b",
     ]
@@ -1503,12 +1733,49 @@ def direct_reply_text(text: str) -> str:
     return "Hello."
 
 
+def response_mentions_pending_document_work(text: str) -> bool:
+    lowered = text.lower()
+    return any(
+        marker in lowered
+        for marker in [
+            "will set up",
+            "will proceed",
+            "next, i",
+            "once this is set",
+            "i will",
+            "i'll",
+            "akan saya",
+            "selanjutnya saya",
+        ]
+    )
+
+
 def is_destination_question(text: str) -> bool:
     mentions_destination = any(marker in text for marker in ["destination", "destinations", "destinasi", "day 2", "day 3"])
     asks = any(marker in text for marker in ["what", "which", "recommend", "rekomend", "reply to me", "apa", "mana"])
     edit_markers = ["make", "set", "change", "update", "apply", "use ", "add ", "tambah", "ubah", "jadikan", "masukkan"]
     edits = any(marker in text for marker in edit_markers)
     return mentions_destination and asks and not edits
+
+
+def is_memo_edit_request(text: str) -> bool:
+    lowered = text.lower()
+    mentions_memo = "memo" in lowered
+    edit_markers = [
+        "make",
+        "buat",
+        "update",
+        "ubah",
+        "improve",
+        "expand",
+        "more descriptive",
+        "lebih lengkap",
+        "lebih detail",
+        "descriptive",
+        "lengkap",
+        "detail",
+    ]
+    return mentions_memo and any(marker in lowered for marker in edit_markers)
 
 
 def is_explicit_add_destination(text: str) -> bool:
@@ -1555,6 +1822,19 @@ def alternative_destinations(
             "A bright blue former kaolin mining lake that adds a different landscape before departure.",
             "A practical beach base for boat departures and another granite-coast sunset stop.",
             "A cultural stop in East Belitung that balances beach days with local literary context.",
+        ]
+    elif "bromo" in base_name.lower() or "east java" in region.lower() or "jawa timur" in region.lower():
+        names = [
+            "Air Terjun Madakaripura",
+            "Bukit Teletubbies Bromo",
+            "Kampung Warna-Warni Jodipan",
+            "Kawah Ijen",
+        ]
+        blurbs = [
+            "A dramatic waterfall canyon near Probolinggo that pairs naturally with a Bromo route extension.",
+            "A softer savanna landscape inside the Bromo area for a distinct scenic day without a long transfer.",
+            "A colorful urban culture stop in Malang that works well before or after the mountain segment.",
+            "A more ambitious volcano extension for travelers who want another iconic East Java landscape.",
         ]
     elif "gede" in base_name.lower() or "west java" in region.lower() or "jawa barat" in region.lower():
         names = [
@@ -1667,6 +1947,7 @@ def normalize_budget_categories(
     total: int,
     constraint: BudgetConstraint | None,
 ) -> list[dict[str, Any]]:
+    categories = [category for category in categories if isinstance(category, dict)]
     category_ids = [category.get("id") for category in categories if category.get("id")] or list(BUDGET_ALLOCATION_WEIGHTS)
     amounts = distribute_amount(total, category_ids)
     note = "(Fixed budget constraint)" if constraint and constraint.budget_mode.startswith("fixed") else "(Estimated within budget constraint)" if constraint else "(Estimated)"
@@ -1676,7 +1957,7 @@ def normalize_budget_categories(
         original = existing_by_id.get(category_id) or {}
         amount = amounts[category_id]
         label = original.get("label") or BUDGET_LABELS.get(category_id, category_id.replace("_", " ").title())
-        items = list(original.get("items") or [])
+        items = [item for item in list(original.get("items") or []) if isinstance(item, dict)]
         line = {"label": label, "amount": format_idr(amount), "detail": "Adjusted to match planner budget constraint."}
         if items:
             items[0] = {**items[0], **line}
@@ -1697,7 +1978,7 @@ def normalize_budget_daily(
     row_totals = distribute_amount(total, row_ids)
     normalized = []
     for index in range(count):
-        original = rows[index] if index < len(rows) else {}
+        original = rows[index] if index < len(rows) and isinstance(rows[index], dict) else {}
         day_total = row_totals[str(index)]
         if constraint and constraint.budget_mode == "daily_cap":
             day_total = min(day_total, constraint.amount_idr)
@@ -1730,7 +2011,7 @@ def distribute_amount(total: int, keys: list[str]) -> dict[str, int]:
     return distributed
 
 
-def validate_budget_content(content: dict[str, Any]) -> list[str]:
+def validate_budget_content(content: dict[str, Any], *, expected_duration_days: int | None = None) -> list[str]:
     errors = []
     constraint_data = content.get("budget_constraint")
     total = int(content.get("estimated_total_idr") or 0)
@@ -1743,6 +2024,8 @@ def validate_budget_content(content: dict[str, Any]) -> list[str]:
         errors.append("budget_category_rollup_mismatch")
     if daily_totals and sum(daily_totals) != total:
         errors.append("budget_daily_rollup_mismatch")
+    if expected_duration_days is not None and len(content.get("daily") or []) != expected_duration_days:
+        errors.append("budget_daily_count_mismatch")
     if not constraint_data:
         return errors
     constraint = BudgetConstraint.model_validate(constraint_data)
