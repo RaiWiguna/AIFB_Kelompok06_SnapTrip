@@ -2,7 +2,14 @@ import pytest
 from conftest import signup
 
 
-async def create_planner_seed(client, owner_id: str):
+async def create_planner_seed(
+    client,
+    owner_id: str,
+    *,
+    name: str = "Pantai Kuta",
+    region: str = "Bali",
+    categories: list[str] | None = None,
+):
     store = client.app.state.store
     session = await store.save_doc(
         "tripCreationSessions",
@@ -28,11 +35,11 @@ async def create_planner_seed(client, owner_id: str):
             "seed_id": "dest_agentic_1",
             "place_enrichment_id": "plc_agentic_1",
             "rank": 1,
-            "name": "Pantai Kuta",
-            "categories": ["pantai"],
-            "region": "Bali",
-            "short_summary": "Beach destination",
-            "description": "Pantai Kuta is a beach destination for the planner agent.",
+            "name": name,
+            "categories": categories or ["pantai"],
+            "region": region,
+            "short_summary": f"{name} destination",
+            "description": f"{name} is a destination for the planner agent.",
             "match_reason": "Matches confirmed trip preferences.",
             "opening_hours_summary": {"status": "available", "summary": "Open daily"},
             "estimated_cost": {
@@ -42,7 +49,7 @@ async def create_planner_seed(client, owner_id: str):
                 "is_estimate": True,
             },
             "location": {
-                "address": "Pantai Kuta, Bali",
+                "address": f"{name}, {region}",
                 "lat": -8.72,
                 "lng": 115.16,
                 "google_maps_uri": "https://maps.google.com/?cid=1",
@@ -62,6 +69,15 @@ def planner_payload(item_id: str):
         "travel_start_date": "2026-06-10",
         "travel_end_date": "2026-06-12",
         "traveler_count": 3,
+    }
+
+
+def planner_payload_for_duration(item_id: str, days: int, traveler_count: int = 4):
+    return {
+        "recommendation_item_id": item_id,
+        "travel_start_date": "2026-06-10",
+        "travel_end_date": f"2026-06-{9 + days:02d}",
+        "traveler_count": traveler_count,
     }
 
 
@@ -238,6 +254,111 @@ async def test_planner_follow_up_can_search_added_destination_and_patch_document
     assert "tool_started" in event_types
     facts = await client.app.state.store.list_docs("plannerResearchFacts", planner_session_id=created["id"])
     assert {fact["kind"] for fact in facts} >= {"places_text_search", "places_details", "grounded_web_research"}
+
+
+@pytest.mark.asyncio
+async def test_duration_change_reconciles_itinerary_dates_and_does_not_append_placeholder_days(client):
+    user = signup(client, "planner-duration-reconcile@example.com")
+    session, item = await create_planner_seed(
+        client,
+        user["id"],
+        name="Gunung Gede Pangrango National Park Office",
+        region="West Java",
+        categories=["gunung"],
+    )
+    created = client.post(
+        f"/api/planner-sessions/from-trip-creation/{session['id']}",
+        json=planner_payload_for_duration(item["id"], 7, traveler_count=4),
+    ).json()["session"]
+    assert len(created["documents"]["full_itinerary"]["content"]["days"]) == 7
+
+    response = client.post(
+        f"/api/planner-sessions/{created['id']}/messages",
+        json={"text": "make into 3 days, and day 2 - 3 different destinations, recommend me some good destinations"},
+    )
+
+    assert response.status_code == 200
+    planner = response.json()["session"]
+    days = planner["documents"]["full_itinerary"]["content"]["days"]
+    assert planner["duration_days"] == 3
+    assert planner["travel_end_date"] == "2026-06-12"
+    assert [day["day"] for day in days] == [1, 2, 3]
+    assert all(day["title"] != "Added destination research" for day in days)
+    assert all("make into 3 days" not in day["description"].lower() for day in days)
+    assert len(planner["documents"]["budget_plan"]["content"]["daily"]) == 3
+
+    repeated = client.post(
+        f"/api/planner-sessions/{created['id']}/messages",
+        json={"text": "make it into 3 days, day 2 and day 3 different destinations each"},
+    )
+    assert repeated.status_code == 200
+    repeated_days = repeated.json()["session"]["documents"]["full_itinerary"]["content"]["days"]
+    assert [day["day"] for day in repeated_days] == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_destination_question_answers_without_mutating_documents(client):
+    user = signup(client, "planner-question-only@example.com")
+    session, item = await create_planner_seed(
+        client,
+        user["id"],
+        name="Gunung Gede Pangrango National Park Office",
+        region="West Java",
+        categories=["gunung"],
+    )
+    created = client.post(
+        f"/api/planner-sessions/from-trip-creation/{session['id']}",
+        json=planner_payload_for_duration(item["id"], 3, traveler_count=4),
+    ).json()["session"]
+    before_versions = {
+        doc_type: doc["version"]
+        for doc_type, doc in created["documents"].items()
+    }
+
+    response = client.post(
+        f"/api/planner-sessions/{created['id']}/messages",
+        json={"text": "so what are the destinations for day 2 and 3?"},
+    )
+
+    assert response.status_code == 200
+    planner = response.json()["session"]
+    after_versions = {
+        doc_type: doc["version"]
+        for doc_type, doc in planner["documents"].items()
+    }
+    assert after_versions == before_versions
+    assert "day 2" in planner["messages"][-1]["content"].lower()
+    assert "day 3" in planner["messages"][-1]["content"].lower()
+    assert "updated the itinerary" not in planner["messages"][-1]["content"].lower()
+
+
+@pytest.mark.asyncio
+async def test_reply_instruction_and_zero_budget_preserve_documents(client):
+    created = await create_ready_planner(client, "planner-chat-budget-guards@example.com")
+    before_versions = {
+        doc_type: doc["version"]
+        for doc_type, doc in created["documents"].items()
+    }
+
+    hello = client.post(f"/api/planner-sessions/{created['id']}/messages", json={"text": "say hello"})
+
+    assert hello.status_code == 200
+    planner = hello.json()["session"]
+    assert planner["messages"][-1]["content"].strip().lower() == "hello"
+    assert {
+        doc_type: doc["version"]
+        for doc_type, doc in planner["documents"].items()
+    } == before_versions
+
+    budget_before = planner["documents"]["budget_plan"]
+    zero_budget = client.post(f"/api/planner-sessions/{created['id']}/messages", json={"text": "make all budgets 0"})
+
+    assert zero_budget.status_code == 200
+    planner = zero_budget.json()["session"]
+    assert planner["documents"]["budget_plan"]["version"] == budget_before["version"]
+    assert planner["documents"]["budget_plan"]["content"]["estimated_total_idr"] == budget_before["content"]["estimated_total_idr"]
+    assert "budget" in planner["messages"][-1]["content"].lower()
+    assert any(word in planner["messages"][-1]["content"].lower() for word in ["clarify", "cannot", "valid"])
 
 
 @pytest.mark.asyncio

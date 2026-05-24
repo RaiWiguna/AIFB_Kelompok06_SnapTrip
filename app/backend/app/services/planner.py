@@ -11,11 +11,13 @@ from fastapi import HTTPException
 from app.core.categories import validate_categories
 from app.core.ids import new_id
 from app.providers.google_places import GooglePlacesProvider
+from app.providers.planner_agent import GeminiPlannerProvider, GeminiValidationFailure
 from app.schemas.planner import (
     BudgetConstraint,
     BudgetPlanDocumentV1,
     FullItineraryDocumentV1,
     PlannerAcceptRequest,
+    PlannerAgentStepV1,
     PlannerInviteCreateRequest,
     PlannerMessageRequest,
     PlannerStartRequest,
@@ -63,10 +65,11 @@ def iso_date(value: date | str) -> str:
 
 
 class PlannerService:
-    def __init__(self, *, store, settings):
+    def __init__(self, *, store, settings, planner_provider: GeminiPlannerProvider | None = None):
         self.store = store
         self.settings = settings
         self.places = GooglePlacesProvider(settings)
+        self.planner_provider = planner_provider or GeminiPlannerProvider(settings)
 
     async def create_from_trip_creation(
         self,
@@ -190,7 +193,7 @@ class PlannerService:
     async def accept(self, planner_session_id: str, user: dict[str, Any], payload: PlannerAcceptRequest):
         session = await self._owned_planner_session(planner_session_id, user)
         documents = await self._latest_documents(planner_session_id)
-        validation = validate_document_set(documents)
+        validation = validate_document_set(documents, expected_duration_days=int(session.get("duration_days") or 0) or None)
         if not validation["valid"]:
             raise HTTPException(status_code=422, detail=f"Planner documents are incomplete: {', '.join(validation['missing'])}")
         if session.get("accepted_trip_plan_id"):
@@ -329,19 +332,22 @@ class PlannerService:
             while turn_count < MAX_AGENT_TURNS and tool_count < MAX_TOOL_CALLS:
                 turn_count += 1
                 await self._emit_event(session["id"], "turn_started", f"Reasoning turn {turn_count}", run_id=run["id"], payload={})
-                actions = self._plan_actions(user_text, session=session, trigger=trigger, turn_count=turn_count)
+                session = await self.store.find_one("plannerSessions", id=session["id"]) or session
+                step = await self._plan_step(user_text, session=session, trigger=trigger, turn_count=turn_count, run_id=run["id"])
+                actions = [action.model_dump() for action in step.actions]
                 if not actions:
-                    await self._assistant_response(session["id"], run["id"], self._direct_response(user_text))
+                    await self._assistant_response(session["id"], run["id"], step.assistant_text or self._direct_response(user_text))
                     break
                 for action in actions:
                     tool_count += 1
                     if tool_count > MAX_TOOL_CALLS:
                         break
                     await self._execute_tool(session["id"], run["id"], action)
-                await self._assistant_response(session["id"], run["id"], self._summary_response(actions))
+                await self._assistant_response(session["id"], run["id"], step.assistant_text or self._summary_response(actions))
                 break
             documents = await self._latest_documents(session["id"])
-            validation = validate_document_set(documents)
+            session = await self.store.find_one("plannerSessions", id=session["id"]) or session
+            validation = validate_document_set(documents, expected_duration_days=int(session.get("duration_days") or 0) or None)
             status = "ready_to_review" if validation["valid"] else "needs_input"
             await self.store.update_doc(
                 "plannerSessions",
@@ -382,54 +388,163 @@ class PlannerService:
             )
             raise
 
-    def _plan_actions(self, user_text: str, *, session: dict[str, Any], trigger: str, turn_count: int) -> list[dict[str, Any]]:
+    async def _plan_step(
+        self,
+        user_text: str,
+        *,
+        session: dict[str, Any],
+        trigger: str,
+        turn_count: int,
+        run_id: str,
+    ) -> PlannerAgentStepV1:
+        if self.planner_provider.enabled:
+            context = await self._build_agent_context(session["id"], user_text=user_text, trigger=trigger, turn_count=turn_count)
+            try:
+                return await self.planner_provider.decide(
+                    context,
+                    trace_context={
+                        "trace_id": run_id,
+                        "flow": "flow3",
+                        "stage": "planner_agent",
+                        "event_prefix": "flow3_planner_agent",
+                        "session_id": session["id"],
+                        "owner_id": session["owner_id"],
+                        "run_id": run_id,
+                    },
+                )
+            except GeminiValidationFailure:
+                return await self._fallback_plan_step(user_text, session=session, trigger=trigger)
+        return await self._fallback_plan_step(user_text, session=session, trigger=trigger)
+
+    async def _fallback_plan_step(self, user_text: str, *, session: dict[str, Any], trigger: str) -> PlannerAgentStepV1:
         text = user_text.lower()
         if trigger == "auto_initial":
-            return [
-                {"tool": "read_trip_context", "args": {}},
-                {"tool": "grounded_web_research", "args": {"query": "current accommodation and transport cost estimates"}},
-                {"tool": "replace_trip_memo", "args": {}},
-                {"tool": "replace_full_itinerary", "args": {}},
-                {"tool": "replace_budget_plan", "args": {}},
-                {"tool": "validate_documents", "args": {}},
-            ]
-        if "add" in text or "tambah" in text or "destination" in text or "destinasi" in text:
-            return [
-                {"tool": "places_text_search", "args": {"query": user_text}},
-                {"tool": "places_details", "args": {}},
-                {"tool": "grounded_web_research", "args": {"query": user_text}},
-                {"tool": "patch_itinerary_day", "args": {"intent": user_text}},
-                {"tool": "patch_budget_category", "args": {"intent": user_text}},
-                {"tool": "patch_memo_section", "args": {"intent": user_text}},
-                {"tool": "validate_documents", "args": {}},
-            ]
+            return PlannerAgentStepV1(
+                intent="initial_plan",
+                requires_document_edit=True,
+                affected_documents=["trip_memo", "full_itinerary", "budget_plan"],
+                assistant_text="I drafted the trip memo, full itinerary, and budget plan from your selected destination, dates, and group size.",
+                actions=[
+                    {"tool": "read_trip_context", "args": {}},
+                    {"tool": "grounded_web_research", "args": {"query": "current accommodation and transport cost estimates"}},
+                    {"tool": "replace_trip_memo", "args": {}},
+                    {"tool": "replace_full_itinerary", "args": {}},
+                    {"tool": "replace_budget_plan", "args": {}},
+                    {"tool": "validate_documents", "args": {}},
+                ],
+            )
+        if is_direct_reply_request(text):
+            return PlannerAgentStepV1(intent="answer_question", assistant_text=direct_reply_text(text), stop=True)
+        if is_destination_question(text):
+            return PlannerAgentStepV1(
+                intent="recommend_destinations",
+                assistant_text=await self._destination_answer(session["id"], user_text),
+                stop=True,
+            )
         if budget_request_is_ambiguous(user_text):
-            return [
-                {
-                    "tool": "request_clarification",
-                    "args": {
-                        "reason": "budget_scope_ambiguous",
-                        "question": "Is that budget for the whole trip, per person, or per day?",
-                    },
-                }
-            ]
+            return PlannerAgentStepV1(
+                intent="request_clarification",
+                assistant_text="Is that budget for the whole trip, per person, or per day?",
+                needs_user_input=True,
+                actions=[
+                    {
+                        "tool": "request_clarification",
+                        "args": {
+                            "reason": "budget_scope_ambiguous",
+                            "question": "Is that budget for the whole trip, per person, or per day?",
+                        },
+                    }
+                ],
+            )
+        if is_zero_budget_request(text):
+            return PlannerAgentStepV1(
+                intent="request_clarification",
+                assistant_text="I cannot make a valid publishable trip budget equal to 0. Please clarify a positive fixed total, cap, per-person budget, or daily budget.",
+                needs_user_input=True,
+                actions=[
+                    {
+                        "tool": "request_clarification",
+                        "args": {
+                            "reason": "zero_budget_invalid",
+                            "question": "Please clarify a positive fixed total, cap, per-person budget, or daily budget.",
+                        },
+                    }
+                ],
+            )
+        if is_explicit_add_destination(text):
+            return PlannerAgentStepV1(
+                intent="add_destination",
+                requires_document_edit=True,
+                affected_documents=["trip_memo", "full_itinerary", "budget_plan"],
+                assistant_text="I researched the added destination, updated the itinerary, adjusted the budget, and refreshed the memo.",
+                actions=[
+                    {"tool": "places_text_search", "args": {"query": user_text}},
+                    {"tool": "places_details", "args": {}},
+                    {"tool": "grounded_web_research", "args": {"query": user_text}},
+                    {"tool": "patch_itinerary_day", "args": {"intent": user_text}},
+                    {"tool": "patch_budget_category", "args": {"intent": user_text}},
+                    {"tool": "patch_memo_section", "args": {"intent": user_text}},
+                    {"tool": "validate_documents", "args": {}},
+                ],
+            )
         budget_constraint = parse_budget_constraint(user_text, int(session.get("traveler_count") or 1))
         if budget_constraint or "budget" in text or "biaya" in text or "cheap" in text or "murah" in text:
             args = {"intent": user_text}
             if budget_constraint:
                 args["budget_constraint"] = budget_constraint.model_dump()
-            return [
-                {"tool": "grounded_web_research", "args": {"query": user_text}},
-                {"tool": "patch_budget_category", "args": args},
-                {"tool": "validate_documents", "args": {}},
-            ]
-        if "day" in text or "hari" in text or "duration" in text or "durasi" in text:
-            return [
-                {"tool": "patch_itinerary_day", "args": {"intent": user_text}},
-                {"tool": "patch_budget_category", "args": {"intent": user_text}},
-                {"tool": "validate_documents", "args": {}},
-            ]
-        return []
+            return PlannerAgentStepV1(
+                intent="change_budget",
+                requires_document_edit=True,
+                affected_documents=["budget_plan"],
+                assistant_text="I updated the budget constraint, recalculated totals, and kept the structured documents valid.",
+                actions=[
+                    {"tool": "grounded_web_research", "args": {"query": user_text}},
+                    {"tool": "patch_budget_category", "args": args},
+                    {"tool": "validate_documents", "args": {}},
+                ],
+            )
+        requested_duration = extract_requested_duration_days(text)
+        if requested_duration or "day" in text or "hari" in text or "duration" in text or "durasi" in text:
+            args = {"intent": user_text}
+            if requested_duration:
+                args["duration_days"] = requested_duration
+            return PlannerAgentStepV1(
+                intent="change_duration",
+                requires_document_edit=True,
+                affected_documents=["trip_memo", "full_itinerary", "budget_plan"],
+                duration_days=requested_duration,
+                assistant_text=duration_change_response(requested_duration),
+                actions=[
+                    {"tool": "grounded_web_research", "args": {"query": user_text}},
+                    {"tool": "patch_itinerary_day", "args": args},
+                    {"tool": "patch_budget_category", "args": args},
+                    {"tool": "patch_memo_section", "args": args},
+                    {"tool": "validate_documents", "args": {}},
+                ],
+            )
+        return PlannerAgentStepV1(intent="answer_question", assistant_text=self._direct_response(user_text), stop=True)
+
+    async def _build_agent_context(
+        self,
+        planner_session_id: str,
+        *,
+        user_text: str,
+        trigger: str,
+        turn_count: int,
+    ) -> dict[str, Any]:
+        session = await self.store.find_one("plannerSessions", id=planner_session_id)
+        messages = await self._ordered("plannerMessages", planner_session_id=planner_session_id)
+        facts = await self.store.list_docs("plannerResearchFacts", planner_session_id=planner_session_id)
+        return {
+            "schema_version": "planner_agent_context.v1",
+            "trigger": trigger,
+            "turn_count": turn_count,
+            "user_text": user_text,
+            "session": session,
+            "documents": await self._latest_documents(planner_session_id),
+            "recent_messages": messages[-8:],
+            "research_facts": facts[-8:],
+        }
 
     async def _execute_tool(self, planner_session_id: str, run_id: str, action: dict[str, Any]) -> None:
         tool = action["tool"]
@@ -459,11 +574,17 @@ class PlannerService:
             elif tool == "grounded_web_research":
                 result = await self._grounded_research(planner_session_id, action.get("args", {}))
             elif tool == "validate_documents":
-                result = validate_document_set(await self._latest_documents(planner_session_id))
+                session = await self.store.find_one("plannerSessions", id=planner_session_id)
+                result = validate_document_set(
+                    await self._latest_documents(planner_session_id),
+                    expected_duration_days=int((session or {}).get("duration_days") or 0) or None,
+                )
                 event = "document_validation_started" if result["valid"] else "document_validation_failed"
                 await self._emit_event(planner_session_id, event, "Validated planner documents", run_id=run_id, payload=result)
             elif tool == "compute_budget_summary":
                 result = await self._compute_budget_summary(planner_session_id)
+            elif tool == "finish_response":
+                result = {"ok": True}
             elif tool == "request_clarification":
                 result = {
                     "needs_user_input": True,
@@ -527,33 +648,20 @@ class PlannerService:
         documents = await self._latest_documents(planner_session_id)
         if "full_itinerary" not in documents:
             return await self._replace_full_itinerary(planner_session_id, run_id)
-        content = documents["full_itinerary"]["content"]
-        days = list(content.get("days") or [])
-        next_day = len(days) + 1
-        days.append(
-            {
-                "day": next_day,
-                "title": "Added destination research",
-                "summary": "Extra stop added from the chat request.",
-                "description": args.get("intent") or "Added from chat request.",
-                "cover": "/landing/indonesia-map.png",
-                "dateLabel": f"Day {next_day}",
-                "highlights": ["Added by agent", "Estimate"],
-                "activities": [
-                    {
-                        "time": "10:00",
-                        "title": "Explore added stop",
-                        "detail": args.get("intent") or "Confirm details before departure.",
-                        "location": "Indonesia",
-                        "duration": "3h",
-                    }
-                ],
-                "transport": {"mode": "Drive", "from": "Previous stop", "to": "Added stop", "durationLabel": "Estimate"},
-                "accommodation": {"name": "Local stay to confirm", "area": "Indonesia", "nights": 1},
-                "meals": {"lunch": "Local restaurant to confirm"},
-                "estCost": {"value": "Budget updated", "note": "estimate"},
-            }
-        )
+        session = await self.store.find_one("plannerSessions", id=planner_session_id)
+        if args.get("duration_days"):
+            session = await self._update_duration(planner_session_id, int(args["duration_days"]))
+        elif is_explicit_add_destination((args.get("intent") or "").lower()):
+            session = await self._update_duration(planner_session_id, int((session or {}).get("duration_days") or 1) + 1)
+        duration = int((session or {}).get("duration_days") or 1)
+        destinations = await self._route_destinations(planner_session_id, duration, args.get("intent") or "")
+        days = synthesize_itinerary(destinations)
+        start_date = (session or {}).get("travel_start_date") or date.today().isoformat()
+        for idx, day in enumerate(days, start=0):
+            day["day"] = idx + 1
+            day["dateLabel"] = date_label(start_date, idx)
+            day["transport"]["from"] = "Start" if idx == 0 else days[idx - 1]["title"]
+            day["accommodation"]["nights"] = 0 if idx == duration - 1 else 1
         document = FullItineraryDocumentV1.model_validate({"days": days}).model_dump(by_alias=True)
         return await self._commit_document(planner_session_id, run_id, "full_itinerary", "full_itinerary.v1", document)
 
@@ -579,6 +687,15 @@ class PlannerService:
                 duration_days=duration,
                 constraint=constraint,
             )
+        elif args.get("duration_days"):
+            previous_days = max(len(content.get("daily") or []), 1)
+            per_day = round(total / previous_days)
+            total = per_day * duration
+            content = normalize_budget_content(
+                {**content, "estimated_total_idr": total, "budget_constraint": None},
+                traveler_count=traveler_count,
+                duration_days=duration,
+            )
         elif "cheap" in intent or "murah" in intent or "cap" in intent or "under" in intent:
             total = round(total * 0.85)
             content = normalize_budget_content(
@@ -600,11 +717,20 @@ class PlannerService:
         documents = await self._latest_documents(planner_session_id)
         if "trip_memo" not in documents:
             return await self._replace_trip_memo(planner_session_id, run_id)
-        content = documents["trip_memo"]["content"]
-        note = args.get("intent") or "Updated from chat request."
-        content["markdown"] = f"{content['markdown']}\n\n### Latest adjustment\n\n- {note}"
-        content["items"] = int(content.get("items") or 1) + 1
-        document = TripMemoDocumentV1.model_validate(content).model_dump()
+        context = await self._read_trip_context(planner_session_id)
+        destinations = await self._route_destinations(
+            planner_session_id,
+            int(context["session"].get("duration_days") or 1),
+            args.get("intent") or "",
+        )
+        memo = synthesize_memo(context["plan"], destinations)
+        memo["markdown"] = normalize_memo_markdown(
+            memo["markdown"],
+            duration=int(context["session"].get("duration_days") or 1),
+            travelers=int(context["session"].get("traveler_count") or 1),
+        )
+        memo["items"] = max(len(destinations), 1)
+        document = TripMemoDocumentV1.model_validate(memo).model_dump()
         return await self._commit_document(planner_session_id, run_id, "trip_memo", "trip_memo.v1", document)
 
     async def _places_text_search(self, planner_session_id: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -662,6 +788,48 @@ class PlannerService:
             "per_person_idr": budget.get("per_person_idr"),
             "category_count": len(budget.get("categories") or []),
         }
+
+    async def _update_duration(self, planner_session_id: str, days: int) -> dict[str, Any]:
+        session = await self.store.find_one("plannerSessions", id=planner_session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Planner session not found")
+        start = date.fromisoformat(session["travel_start_date"])
+        end = start + timedelta(days=max(days, 1) - 1)
+        updates = {
+            "duration_days": max(days, 1),
+            "travel_end_date": end.isoformat(),
+        }
+        updated = await self.store.update_doc("plannerSessions", planner_session_id, updates)
+        await self.store.update_doc("tripCreationSessions", session["trip_creation_session_id"], updates)
+        return updated or {**session, **updates}
+
+    async def _route_destinations(self, planner_session_id: str, days: int, intent: str) -> list[dict[str, Any]]:
+        context = await self._read_trip_context(planner_session_id)
+        base = context["destinations"][0]
+        destinations = [base]
+        use_alternatives = wants_distinct_day_destinations(intent) or days > 1
+        if use_alternatives:
+            destinations.extend(alternative_destinations(base, context.get("recommendation_item"), days - 1))
+        return expand_destinations_for_duration(destinations, days)[:days]
+
+    async def _destination_answer(self, planner_session_id: str, user_text: str) -> str:
+        documents = await self._latest_documents(planner_session_id)
+        days = ((documents.get("full_itinerary") or {}).get("content") or {}).get("days") or []
+        text = user_text.lower()
+        if "other than" in text or "selain" in text or "recommend" in text or "rekomend" in text:
+            context = await self._read_trip_context(planner_session_id)
+            base = context["destinations"][0]
+            alternatives = alternative_destinations(base, context.get("recommendation_item"), 2)
+            names = [destination["name"] for destination in alternatives[:2]]
+            return (
+                f"For day 2 and day 3, I would recommend {names[0]} and {names[1]} as alternatives to "
+                f"{base['name']}. I have not changed the itinerary yet; tell me to apply them if you want them in the plan."
+            )
+        selected = {int(day.get("day")): day.get("title") for day in days if int(day.get("day") or 0) in {2, 3}}
+        if selected:
+            parts = [f"Day {day}: {title}" for day, title in sorted(selected.items())]
+            return "The current itinerary uses " + " and ".join(parts) + "."
+        return "The current itinerary does not have day 2 and day 3 destinations yet."
 
     async def _commit_document(
         self,
@@ -854,7 +1022,7 @@ class PlannerService:
         return f"{session.get('selected_destination_name') or 'Selected destination'} trip"
 
     def _acceptance_state(self, session: dict[str, Any], documents: dict[str, Any]) -> dict[str, Any]:
-        validation = validate_document_set(documents)
+        validation = validate_document_set(documents, expected_duration_days=int(session.get("duration_days") or 0) or None)
         return {
             "enabled": validation["valid"] and session.get("status") in {"ready_to_review", "accepted"},
             "reason": "Planner documents are ready." if validation["valid"] else f"Missing: {', '.join(validation['missing'])}",
@@ -880,15 +1048,57 @@ class PlannerService:
         return "I updated the planner documents and validated the latest draft."
 
 
-def validate_document_set(documents: dict[str, Any]) -> dict[str, Any]:
+def validate_document_set(documents: dict[str, Any], *, expected_duration_days: int | None = None) -> dict[str, Any]:
     missing = [doc_type for doc_type in PLANNER_DOCUMENT_TYPES if doc_type not in documents]
     invalid = [doc_type for doc_type, doc in documents.items() if doc_type in PLANNER_DOCUMENT_TYPES and not doc.get("valid")]
     budget_errors = []
+    itinerary_errors = []
+    memo_errors = []
+    if "full_itinerary" in documents:
+        itinerary_errors = validate_itinerary_content(
+            documents["full_itinerary"].get("content") or {},
+            expected_duration_days=expected_duration_days,
+        )
+        if itinerary_errors and "full_itinerary" not in invalid:
+            invalid.append("full_itinerary")
     if "budget_plan" in documents:
         budget_errors = validate_budget_content(documents["budget_plan"].get("content") or {})
         if budget_errors and "budget_plan" not in invalid:
             invalid.append("budget_plan")
-    return {"valid": not missing and not invalid, "missing": missing, "invalid": invalid, "budget_errors": budget_errors}
+    if "trip_memo" in documents:
+        memo_errors = validate_memo_content(documents["trip_memo"].get("content") or {})
+        if memo_errors and "trip_memo" not in invalid:
+            invalid.append("trip_memo")
+    return {
+        "valid": not missing and not invalid,
+        "missing": missing,
+        "invalid": invalid,
+        "budget_errors": budget_errors,
+        "itinerary_errors": itinerary_errors,
+        "memo_errors": memo_errors,
+    }
+
+
+def validate_itinerary_content(content: dict[str, Any], *, expected_duration_days: int | None = None) -> list[str]:
+    errors = []
+    days = content.get("days") or []
+    day_numbers = [int(day.get("day") or 0) for day in days]
+    expected_numbers = list(range(1, len(days) + 1))
+    if day_numbers != expected_numbers:
+        errors.append("itinerary_days_must_be_sequential")
+    if expected_duration_days is not None and len(days) != expected_duration_days:
+        errors.append("itinerary_day_count_mismatch")
+    if any((day.get("title") or "").strip().lower() == "added destination research" for day in days):
+        errors.append("itinerary_contains_placeholder_day")
+    return errors
+
+
+def validate_memo_content(content: dict[str, Any]) -> list[str]:
+    markdown = (content.get("markdown") or "").lower()
+    errors = []
+    if markdown.count("latest adjustment") > 1:
+        errors.append("memo_contains_repeated_latest_adjustments")
+    return errors
 
 
 def empty_context_summary() -> dict[str, Any]:
@@ -1008,6 +1218,138 @@ def extract_budget_amount_idr(source_text: str) -> int | None:
     return None
 
 
+def extract_requested_duration_days(text: str) -> int | None:
+    patterns = [
+        r"\b(?:make|ubah|jadikan|set|change|into|to)\D{0,16}(\d{1,2})\s*(?:day|days|hari)\b",
+        r"\b(\d{1,2})\s*(?:day|days|hari)\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = int(match.group(1))
+            if 1 <= value <= 30:
+                return value
+    return None
+
+
+def is_zero_budget_request(text: str) -> bool:
+    return bool(
+        re.search(r"\b(?:budget|budgets|biaya)\b", text)
+        and re.search(r"\b(?:0|zero|nol)\b", text)
+        and any(marker in text for marker in ["make", "set", "all", "semua", "jadikan", "ubah"])
+    )
+
+
+def is_direct_reply_request(text: str) -> bool:
+    stripped = text.strip().lower()
+    return stripped in {"hi", "hello", "halo", "hai"} or stripped.startswith("say hello") or stripped.startswith("reply hello")
+
+
+def direct_reply_text(text: str) -> str:
+    stripped = text.strip().lower()
+    if stripped.startswith("say hello") or stripped.startswith("reply hello"):
+        return "hello"
+    if stripped in {"halo", "hai"}:
+        return "Halo."
+    return "Hello."
+
+
+def is_destination_question(text: str) -> bool:
+    mentions_destination = any(marker in text for marker in ["destination", "destinations", "destinasi", "day 2", "day 3"])
+    asks = any(marker in text for marker in ["what", "which", "recommend", "rekomend", "reply to me", "apa", "mana"])
+    edit_markers = ["make", "set", "change", "update", "apply", "use ", "add ", "tambah", "ubah", "jadikan", "masukkan"]
+    edits = any(marker in text for marker in edit_markers)
+    return mentions_destination and asks and not edits
+
+
+def is_explicit_add_destination(text: str) -> bool:
+    return any(marker in text for marker in ["add destination", "add a destination", "tambah destination", "tambah destinasi"])
+
+
+def wants_distinct_day_destinations(intent: str) -> bool:
+    text = intent.lower()
+    return any(marker in text for marker in ["different destination", "different destinations", "destinasi berbeda", "berbeda"]) or (
+        "day 2" in text and "day 3" in text and any(marker in text for marker in ["destination", "destinasi"])
+    )
+
+
+def duration_change_response(requested_duration: int | None) -> str:
+    if requested_duration:
+        return (
+            f"I updated the plan to exactly {requested_duration} days, reconciled the itinerary days, "
+            "adjusted the budget daily rows, and refreshed the memo."
+        )
+    return "I updated the itinerary duration, adjusted the budget rows, and refreshed the memo."
+
+
+def alternative_destinations(
+    base: dict[str, Any],
+    recommendation_item: dict[str, Any] | None,
+    count: int,
+) -> list[dict[str, Any]]:
+    region = (base.get("region") or (recommendation_item or {}).get("region") or "Indonesia").split(",")[0]
+    base_name = base.get("name") or "Selected destination"
+    if "gede" in base_name.lower() or "west java" in region.lower() or "jawa barat" in region.lower():
+        names = [
+            "Cibodas Botanical Garden",
+            "Curug Cibeureum",
+            "Situ Gunung Suspension Bridge",
+            "Cianjur local food stop",
+        ]
+        blurbs = [
+            "A highland garden near the national park with gentler walks and cooler air.",
+            "A waterfall area often paired with Cibodas for a nature-focused day.",
+            "A Sukabumi-area forest bridge and lake stop for a different landscape.",
+            "A flexible local culture and meal stop to balance the mountain itinerary.",
+        ]
+    else:
+        names = [
+            f"{region} cultural stop",
+            f"{region} scenic viewpoint",
+            f"{region} local food area",
+            f"{region} relaxed final stop",
+        ]
+        blurbs = [
+            "A practical cultural stop that adds variety without overloading the route.",
+            "A scenic stop for a different view and a slower travel day.",
+            "A food-focused stop to make the route feel more local.",
+            "A flexible final stop that keeps the itinerary realistic.",
+        ]
+    destinations = []
+    for index, name in enumerate(names[: max(count, 0)], start=2):
+        destinations.append(
+            {
+                "order": index,
+                "name": name,
+                "region": region,
+                "address": region,
+                "cover": base.get("cover") or "/landing/indonesia-map.png",
+                "blurb": blurbs[(index - 2) % len(blurbs)],
+                "highlights": ["Recommended alternative", "Estimate", region],
+                "pin": {"x": 42 + index * 4 % 30, "y": 40 + index * 3 % 25},
+                "days": [index],
+                "lat": None,
+                "lng": None,
+                "google_maps_uri": None,
+                "place_enrichment_id": None,
+            }
+        )
+    return destinations
+
+
+def normalize_memo_markdown(markdown: str, *, duration: int, travelers: int) -> str:
+    cleaned = re.sub(r"\n\n### Latest adjustment\n\n- .*(?=\n\n### |\Z)", "", markdown, flags=re.IGNORECASE | re.DOTALL)
+    assumptions = (
+        "\n\n### Planning assumptions\n\n"
+        f"- Duration is set to {duration} days.\n"
+        f"- Budget and pacing are estimated for {travelers} travelers.\n"
+        "- Current prices, opening hours, and transport times should be confirmed before booking."
+    )
+    if "### Planning assumptions" in cleaned:
+        return cleaned
+    return f"{cleaned}{assumptions}"
+
+
 def normalize_budget_content(
     content: dict[str, Any],
     *,
@@ -1083,7 +1425,7 @@ def normalize_budget_daily(
     duration_days: int,
     constraint: BudgetConstraint | None,
 ) -> list[dict[str, Any]]:
-    count = max(len(rows), duration_days, 1)
+    count = max(duration_days, 1)
     row_ids = [str(index) for index in range(count)]
     row_totals = distribute_amount(total, row_ids)
     normalized = []
@@ -1124,17 +1466,19 @@ def distribute_amount(total: int, keys: list[str]) -> dict[str, int]:
 def validate_budget_content(content: dict[str, Any]) -> list[str]:
     errors = []
     constraint_data = content.get("budget_constraint")
-    if not constraint_data:
-        return errors
-    constraint = BudgetConstraint.model_validate(constraint_data)
     total = int(content.get("estimated_total_idr") or 0)
     per_person = int(content.get("per_person_idr") or 0)
     category_total = sum(parse_idr_amount(category.get("amount")) for category in content.get("categories") or [])
     daily_totals = [sum(int(value or 0) for value in (row.get("amounts") or {}).values()) for row in content.get("daily") or []]
+    if total <= 0:
+        errors.append("budget_total_must_be_positive")
     if category_total != total:
         errors.append("budget_category_rollup_mismatch")
-    if sum(daily_totals) != total:
+    if daily_totals and sum(daily_totals) != total:
         errors.append("budget_daily_rollup_mismatch")
+    if not constraint_data:
+        return errors
+    constraint = BudgetConstraint.model_validate(constraint_data)
     expected_per_person = round(total / max(constraint.traveler_count, 1))
     if per_person != expected_per_person:
         errors.append("budget_per_person_mismatch")

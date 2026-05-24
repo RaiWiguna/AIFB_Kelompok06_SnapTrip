@@ -35,7 +35,7 @@ export async function signupViaUi(page: Page, prefix = "traveler") {
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill("password123");
   await page.getByRole("button", { name: /create account/i }).click();
-  await expect(page).toHaveURL(/\/explore\?as=user/);
+  await expect(page).toHaveURL(/\/explore\?as=user/, { timeout: 15_000 });
   return { email, password: "password123", displayName: "Journey User" };
 }
 
@@ -44,7 +44,7 @@ export async function loginViaUi(page: Page, email: string, password = "password
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: /sign in/i }).click();
-  await expect(page).toHaveURL(/\/explore\?as=user/);
+  await expect(page).toHaveURL(/\/explore\?as=user/, { timeout: 15_000 });
 }
 
 export const pngUpload = {

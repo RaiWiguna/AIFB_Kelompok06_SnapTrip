@@ -5,7 +5,7 @@
 | Document status | Active handoff |
 | Last updated | 2026-05-24 |
 | Branch | `feat/agentic-trip-planner` |
-| Purpose | Resume point after agentic planner publish-flow audit and CI/deploy safety verification |
+| Purpose | Resume point after intent-aware Gemini planner decision layer, planner guardrails, publish-flow audit, and CI/deploy safety verification |
 
 ## 1. Completed This Session
 
@@ -35,6 +35,18 @@
   - exposed `ownerId`, `visibility`, `status`, and `plannerSessionId` through the frontend trip detail adapter,
   - added participant-aware Trip detail rows and joined-trip account summary data,
   - extended backend and Playwright tests so accepted private trips stay out of Explore, published trips appear in Explore for another user, My Trips links open detail, and invite-only joined trips are readable by participants.
+- Replaced the broken keyword-scripted planner decision path with an intent-aware planner decision boundary:
+  - added `GeminiPlannerProvider` for backend-only Gemini structured-output planner steps using the existing provider/observability pattern,
+  - extended `planner_agent_step.v1` with explicit intent, document-edit flag, affected documents, and optional duration changes,
+  - kept a deterministic local/test fallback that implements the same intent contract without real Gemini calls,
+  - updated planner prompts so question-only/recommendation-only turns do not mutate canonical documents unless the user explicitly asks to apply/update/use/add,
+  - changed duration edits such as "make it 3 days" to update planner/trip-creation duration and end date, then rebuild itinerary and budget rows to the exact day count,
+  - stopped append-only placeholder itinerary patches that produced Day 8/10/11 "Added destination research" cards,
+  - changed destination questions and "say hello" style turns to answer in chat without document versions,
+  - made zero-budget requests clarification cases that preserve the latest valid budget,
+  - regenerated memo patches from structured route context instead of appending repeated raw "Latest adjustment" user text,
+  - strengthened validation for itinerary day count/sequencing, placeholder day cards, memo adjustment spam, positive budget totals, and budget rollups,
+  - added regression tests for the reported Gunung Gede transcript, provider wrapper tests with fake Gemini, and prompt contract tests.
 - Created branch `feat/snaptrip-foundation` from `feat/snaptrip-prd-replacement`.
 - Implemented Phase 1 root workflow:
   - root `package.json` orchestration,
@@ -184,11 +196,12 @@
 - Root `npm run test` runs backend, frontend, and Playwright; Playwright now starts memory-mode backend and frontend dev servers for integrated product journeys and refuses to reuse stale local servers.
 - The test-only seeding API is available only under `APP_ENV=test` and should not be promoted to development or production routes.
 - Persisted planner documents, Trip Plan acceptance, invites, participants, visibility updates, publish/unpublish, Explore publication, My Trips links, and accepted Trip Plan detail reads now have backend/frontend support.
-- Real Gemini-backed planner reasoning remains a follow-up; the current implementation uses deterministic tool execution behind the same session/tool/event/document boundary.
+- Gemini-backed planner reasoning now has a structured planner decision provider behind the existing session/tool/event/document boundary. Local/test runs keep deterministic fallback behavior because `USE_GEMINI=false` in test setup.
 - `/plan/{id}` now expects a planner session ID. Flow 2 creates the planner session from the selected trip-creation session and routes to the returned planner session ID.
 - `planner-preview` still exists for backward compatibility/tests, but new planner UI routes use `/api/planner-sessions`.
 - Accepted planner Trip Plans can be published from owner detail. Public accepted trips appear in Explore for other users and open through `/trips/{trip_plan_id}`.
 - Invite-only accepted trips can be opened by active participants and appear in the participant's My Trips joined section.
+- Planner chat turns now classify intent before tools. Informational questions and reply-only messages should not create document versions, while explicit edit requests mutate only through validated document tools.
 - Static frontend image assets are display fallbacks only; they must not be sent to classifier source-image APIs.
 - Phase 10 production deploy uses `snaptrip.site`, `api.snaptrip.site`, `/opt/snaptrip/hosted`, GitHub Actions, source-archive releases, Docker Compose, and Caddy.
 - Production deploy requires real Gemini and Google Places secrets before first deploy. `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY` is the only frontend-exposed provider key.
@@ -376,7 +389,7 @@ Verification after accepted-trip publish flow audit:
 - Google Maps frontend rendering is implemented behind `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`; CI/local test defaults still pass without a Maps key by using the static fallback map.
 - The planner preview endpoint requires selected recommendations and intentionally returns `422` before destination selection.
 - Planner acceptance, invites, participant writes, visibility updates, publish/unpublish, and persisted structured planner documents are no longer preview-only in the new planner session path. The old preview endpoint remains available only as a backward-compatible boundary.
-- The current planner agent loop is deterministic/provider-boundary-backed. Replace the deterministic planner stepper with real Gemini structured-output planning and grounded research only after production secrets and observability are confirmed.
+- The planner agent decision layer is Gemini structured-output capable when `USE_GEMINI=true`; local/test runs keep deterministic fallback behavior behind the same intent/tool/document boundary.
 - No real secrets should be added to `.env.local`, `.env.local.example`, or deployment env examples.
 - ADRs under `docs/adr/` capture durable implementation caveats and follow-up hardening work without tying those decisions to roadmap phase labels.
 - `docs/adr/0008-integrated-product-journey-validation-boundary.md` freezes the test-only seed route and serial memory-mode E2E validation boundary.
@@ -390,5 +403,5 @@ Continue from `.agents/implementationPhase.md`:
 
 1. Set up production VM, DNS, and GitHub Secrets using `.agents/deploymentGuide.md`, then run the first GitHub Actions deploy.
 2. After the first real provider-backed deploy, inspect `aiObservabilityEvents` for one Flow 1 trace and one Flow 2 trace to confirm TTL, raw LLM DB retention, metadata-only container logs, Places lookup metadata, and fallback summaries.
-3. Replace the deterministic planner stepper with real Gemini structured-output turns and grounded-research calls behind the existing planner session/tool/event/document boundary.
-4. Keep Google Places and Gemini secrets backend-only, and keep remote deploy changes separate from provider-behavior changes.
+3. Run a real provider-backed planner smoke after production Gemini and Google Places secrets are configured, then inspect planner events/documents for one complete Flow 3 trace.
+4. Keep Google Places and Gemini secrets backend-only, and keep remote deploy changes separate from future provider-behavior tuning.

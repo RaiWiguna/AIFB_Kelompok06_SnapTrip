@@ -21,6 +21,11 @@ def test_planner_prompt_defines_stateful_agent_contract():
     assert "grounded web research" in prompt
     assert "Agent behavior policy" in prompt
     assert "observe -> decide -> act -> validate -> respond" in prompt
+    assert "answer_question" in prompt
+    assert "recommend_destinations" in prompt
+    assert "question-only messages must not mutate canonical" in prompt
+    assert "exactly the requested number of days" in prompt
+    assert "zero total budget is not a valid publishable trip budget" in prompt
     assert "Readiness behavior" in prompt
     assert "ready for review only when" in prompt
 
