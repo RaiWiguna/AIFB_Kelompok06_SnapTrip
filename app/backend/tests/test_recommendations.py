@@ -5,6 +5,7 @@ import httpx
 import pytest
 from conftest import signup
 
+from app.core.observability import AiObservabilityRecorder
 from app.db.seeds import DESTINATION_SEEDS
 from app.providers.gemini import GeminiRecommendationProvider, GeminiValidationFailure
 from app.providers.google_places import (
@@ -42,6 +43,10 @@ def test_recommendation_api_uses_deterministic_fallback_when_providers_disabled(
     assert generated.status_code == 200
     body = generated.json()
     assert body["run"]["fallback_used"] is True
+    assert body["run"]["trace_id"].startswith("trc_")
+    assert body["run"]["observability"]["enabled"] is True
+    assert body["run"]["observability"]["raw_llm_enabled"] is True
+    assert body["run"]["observability"]["event_count"] > 0
     assert body["items"]
     assert body["items"][0]["id"].startswith("reci_")
     assert body["items"][0]["seed_id"].startswith("dest_")
@@ -62,6 +67,14 @@ def test_recommendation_api_uses_deterministic_fallback_when_providers_disabled(
     )
     assert selected.status_code == 200
     assert selected.json()["selected_recommendation_ids"] == [body["items"][0]["id"]]
+    events = client.app.state.store.collections["aiObservabilityEvents"].values()
+    run_events = [event for event in events if event["trace_id"] == body["run"]["trace_id"]]
+    assert "flow2_run_started" in {event["event"] for event in run_events}
+    assert "flow2_gemini_1_fallback" in {event["event"] for event in run_events}
+    assert "flow2_gemini_2_fallback" in {event["event"] for event in run_events}
+    assert "flow2_run_completed" in {event["event"] for event in run_events}
+    fallback_event = next(event for event in run_events if event["event"] == "flow2_gemini_1_fallback")
+    assert fallback_event["payload"]["error_message"] == "Gemini 1 provider unavailable or request failed."
 
 
 def test_destination_seeds_are_fixed_ten_per_category():
@@ -241,6 +254,146 @@ def test_text_search_field_mask_stays_resolution_scoped():
 
 
 @pytest.mark.asyncio
+async def test_gemini_provider_observes_raw_prompt_and_response_by_default(monkeypatch, client):
+    install_fake_gemini(monkeypatch)
+    settings = client.app.state.settings
+    settings.use_gemini = True
+    settings.gemini_api_key = "fake-key"
+    recorder = AiObservabilityRecorder(store=client.app.state.store, settings=settings)
+    provider = GeminiRecommendationProvider(settings, observability=recorder)
+
+    await provider.select_destinations(
+        {"schema_version": "destination_seed_selection.v1", "hello": "world"},
+        trace_context={
+            "trace_id": "trc_raw_default",
+            "flow": "flow2",
+            "stage": "gemini_1",
+            "event_prefix": "flow2_gemini_1",
+            "session_id": "tcs_raw",
+            "owner_id": "usr_raw",
+        },
+    )
+
+    events = await client.app.state.store.list_docs("aiObservabilityEvents", trace_id="trc_raw_default")
+    prompt_event = next(event for event in events if event["event"] == "flow2_gemini_1_prompt_prepared")
+    completed_event = next(event for event in events if event["event"] == "flow2_gemini_1_completed")
+    assert prompt_event["payload"]["raw_prompt_text"]
+    assert '"hello": "world"' in prompt_event["payload"]["raw_prompt_text"]
+    assert completed_event["payload"]["raw_response_text"]
+    assert "main_seed_picks" in completed_event["payload"]["raw_response_text"]
+
+
+@pytest.mark.asyncio
+async def test_gemini_provider_can_disable_raw_llm_text(monkeypatch, client):
+    install_fake_gemini(monkeypatch)
+    settings = client.app.state.settings
+    settings.use_gemini = True
+    settings.gemini_api_key = "fake-key"
+    settings.ai_raw_llm_observability = False
+    recorder = AiObservabilityRecorder(store=client.app.state.store, settings=settings)
+    provider = GeminiRecommendationProvider(settings, observability=recorder)
+
+    await provider.select_destinations(
+        {"schema_version": "destination_seed_selection.v1", "hello": "world"},
+        trace_context={
+            "trace_id": "trc_raw_disabled",
+            "flow": "flow2",
+            "stage": "gemini_1",
+            "event_prefix": "flow2_gemini_1",
+            "session_id": "tcs_raw",
+            "owner_id": "usr_raw",
+        },
+    )
+
+    events = await client.app.state.store.list_docs("aiObservabilityEvents", trace_id="trc_raw_disabled")
+    prompt_event = next(event for event in events if event["event"] == "flow2_gemini_1_prompt_prepared")
+    completed_event = next(event for event in events if event["event"] == "flow2_gemini_1_completed")
+    assert "raw_prompt_text" not in prompt_event["payload"]
+    assert "raw_response_text" not in completed_event["payload"]
+    assert prompt_event["payload"]["prompt_sha256"]
+    assert completed_event["payload"]["response_sha256"]
+
+
+@pytest.mark.asyncio
+async def test_gemini_provider_observes_validation_failure_raw_response(monkeypatch, client):
+    install_fake_gemini(monkeypatch, raw_text='{"broken": true}')
+    settings = client.app.state.settings
+    settings.use_gemini = True
+    settings.gemini_api_key = "fake-key"
+    recorder = AiObservabilityRecorder(store=client.app.state.store, settings=settings)
+    provider = GeminiRecommendationProvider(settings, observability=recorder)
+
+    with pytest.raises(GeminiValidationFailure):
+        await provider.select_destinations(
+            {"schema_version": "destination_seed_selection.v1"},
+            trace_context={
+                "trace_id": "trc_invalid_raw",
+                "flow": "flow2",
+                "stage": "gemini_1",
+                "event_prefix": "flow2_gemini_1",
+                "session_id": "tcs_raw",
+                "owner_id": "usr_raw",
+            },
+        )
+
+    events = await client.app.state.store.list_docs("aiObservabilityEvents", trace_id="trc_invalid_raw")
+    completed_event = next(event for event in events if event["event"] == "flow2_gemini_1_completed")
+    assert completed_event["status"] == "validation_failed"
+    assert completed_event["payload"]["raw_response_text"] == '{"broken": true}'
+    assert completed_event["payload"]["safe_message"] == "Gemini output validation failed."
+    assert "input_value" not in str(completed_event["payload"])
+    assert "validation_error" not in completed_event["payload"]
+
+
+@pytest.mark.asyncio
+async def test_places_provider_observes_text_search_and_details(monkeypatch, client):
+    settings = client.app.state.settings
+    settings.use_google_places = True
+    settings.google_places_api_key = "fake-places-key"
+    monkeypatch.setattr(httpx, "AsyncClient", lambda timeout: FakePlacesHttpClient())
+    recorder = AiObservabilityRecorder(store=client.app.state.store, settings=settings)
+    provider = GooglePlacesProvider(settings, observability=recorder)
+    trace_context = {
+        "trace_id": "trc_places",
+        "flow": "flow2",
+        "stage": "places_api",
+        "session_id": "tcs_places",
+        "owner_id": "usr_places",
+    }
+
+    place = await provider.search_text("Pantai Kuta Bali", trace_context=trace_context)
+    details = await provider.get_place_details(place["id"], trace_context=trace_context)
+
+    assert details["id"] == "place-1"
+    events = await client.app.state.store.list_docs("aiObservabilityEvents", trace_id="trc_places")
+    text_event = next(event for event in events if event["event"] == "flow2_places_text_search_completed")
+    details_event = next(event for event in events if event["event"] == "flow2_places_details_completed")
+    assert text_event["payload"]["query"] == "Pantai Kuta Bali"
+    assert text_event["payload"]["selected_place_id"] == "place-1"
+    assert details_event["payload"]["field_coverage"]["has_rating"] is True
+    assert details_event["payload"]["field_mask"]
+
+
+@pytest.mark.asyncio
+async def test_observability_truncates_oversized_text_fields(client):
+    settings = client.app.state.settings
+    settings.ai_observability_max_field_bytes = 8
+    recorder = AiObservabilityRecorder(store=client.app.state.store, settings=settings)
+
+    await recorder.emit(
+        trace_id="trc_truncate",
+        flow="flow2",
+        stage="gemini_1",
+        event="flow2_gemini_1_prompt_prepared",
+        payload={"raw_prompt_text": "x" * 20},
+    )
+
+    event = (await client.app.state.store.list_docs("aiObservabilityEvents", trace_id="trc_truncate"))[0]
+    assert event["payload"]["raw_prompt_text"]["truncated"] is True
+    assert event["payload"]["raw_prompt_text"]["original_bytes"] == 20
+
+
+@pytest.mark.asyncio
 async def test_gemini_provider_passes_configured_model(monkeypatch, client):
     captured = {}
 
@@ -288,8 +441,90 @@ async def test_gemini_provider_passes_configured_model(monkeypatch, client):
     assert captured["model"] == "gemini-3.5-flash"
 
 
+def install_fake_gemini(monkeypatch, raw_text=None):
+    response_text = raw_text or (
+        '{"schema_version":"destination_seed_selection.v1",'
+        '"main_seed_picks":['
+        '{"seed_id":"dest_a","rank":1,"why_its_a_match":"a"},'
+        '{"seed_id":"dest_b","rank":2,"why_its_a_match":"b"}],'
+        '"also_like_picks":['
+        '{"name":"Pantai Baru","rank":1,"why_its_a_match":"c"},'
+        '{"name":"Gunung Baru","rank":2,"why_its_a_match":"d"}]}'
+    )
+
+    class FakeClient:
+        class models:
+            @staticmethod
+            def generate_content(*, model, contents, config):
+                return pytypes.SimpleNamespace(text=response_text, parsed=None)
+
+    class FakeGenerateContentConfig:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    fake_types = pytypes.SimpleNamespace(
+        GenerateContentConfig=FakeGenerateContentConfig,
+        SafetySetting=lambda **kwargs: kwargs,
+        HarmCategory=pytypes.SimpleNamespace(
+            HARM_CATEGORY_DANGEROUS_CONTENT="danger",
+            HARM_CATEGORY_HATE_SPEECH="hate",
+            HARM_CATEGORY_HARASSMENT="harassment",
+            HARM_CATEGORY_SEXUALLY_EXPLICIT="sexual",
+        ),
+        HarmBlockThreshold=pytypes.SimpleNamespace(BLOCK_LOW_AND_ABOVE="low"),
+        Part=pytypes.SimpleNamespace(from_bytes=lambda **kwargs: kwargs),
+    )
+    fake_genai = pytypes.SimpleNamespace(Client=lambda: FakeClient(), types=fake_types)
+    fake_google = pytypes.SimpleNamespace(genai=fake_genai)
+    monkeypatch.setitem(sys.modules, "google", fake_google)
+    monkeypatch.setitem(sys.modules, "google.genai", fake_genai)
+    monkeypatch.setitem(sys.modules, "google.genai.types", fake_types)
+
+
+class FakePlacesHttpClient:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def post(self, url, headers, json):
+        request = httpx.Request("POST", url)
+        return httpx.Response(
+            200,
+            request=request,
+            json={
+                "places": [
+                    {
+                        "id": "place-1",
+                        "name": "places/place-1",
+                        "displayName": {"text": "Pantai Kuta"},
+                        "formattedAddress": "Kuta, Bali",
+                    }
+                ]
+            },
+        )
+
+    async def get(self, url, headers):
+        request = httpx.Request("GET", url)
+        return httpx.Response(
+            200,
+            request=request,
+            json={
+                "id": "place-1",
+                "name": "places/place-1",
+                "displayName": {"text": "Pantai Kuta"},
+                "formattedAddress": "Kuta, Bali",
+                "location": {"latitude": -8.7, "longitude": 115.1},
+                "rating": 4.5,
+                "userRatingCount": 100,
+                "googleMapsUri": "https://maps.google.com/?cid=1",
+            },
+        )
+
+
 class FakePlacesProvider:
-    async def enrich_seed(self, seed):
+    async def enrich_seed(self, seed, trace_context=None):
         return {
             "id": "plc_fake_" + seed["id"],
             "seed_id": seed["id"],
@@ -322,7 +557,16 @@ class FakePlacesProvider:
             "warnings": [],
         }
 
-    async def enrich_suggested_place(self, *, candidate_id, name, search_query=None, region=None, categories=None):
+    async def enrich_suggested_place(
+        self,
+        *,
+        candidate_id,
+        name,
+        search_query=None,
+        region=None,
+        categories=None,
+        trace_context=None,
+    ):
         return await self.enrich_seed(
             {
                 "id": candidate_id,
@@ -341,7 +585,7 @@ class FakeGeminiProvider:
         self.selection_contexts = []
         self.finalization_contexts = []
 
-    async def select_destinations(self, context, image_parts=None):
+    async def select_destinations(self, context, image_parts=None, trace_context=None):
         self.selection_contexts.append(context)
         return DestinationSeedSelectionOutputV1(
             main_seed_picks=[
@@ -374,7 +618,7 @@ class FakeGeminiProvider:
             ],
         )
 
-    async def finalize_cards(self, context):
+    async def finalize_cards(self, context, trace_context=None):
         self.finalization_contexts.append(context)
         return DestinationCardFinalizationOutputV1(
             cards=[
@@ -396,7 +640,7 @@ class PlaceIdFailurePlacesProvider(GooglePlacesProvider):
         self.details_calls = []
         self.search_queries = []
 
-    async def get_place_details(self, place_id):
+    async def get_place_details(self, place_id, trace_context=None):
         self.details_calls.append(place_id)
         if place_id == "stale-place-id":
             request = httpx.Request("GET", "https://places.googleapis.com/v1/places/stale-place-id")
@@ -411,12 +655,12 @@ class PlaceIdFailurePlacesProvider(GooglePlacesProvider):
             "businessStatus": "OPERATIONAL",
         }
 
-    async def search_text(self, query):
+    async def search_text(self, query, trace_context=None):
         self.search_queries.append(query)
         return {"id": "fresh-place-id"}
 
 
 class FailingGeminiProvider(FakeGeminiProvider):
-    async def select_destinations(self, context, image_parts=None):
+    async def select_destinations(self, context, image_parts=None, trace_context=None):
         self.selection_contexts.append(context)
         raise GeminiValidationFailure("broken JSON", "{")

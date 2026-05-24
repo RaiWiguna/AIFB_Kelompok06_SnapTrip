@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     use_google_places: bool = False
     use_gemini: bool = False
     ai_provider_timeout_seconds: int = 30
+    ai_observability_enabled: bool = True
+    ai_raw_llm_observability: bool = True
+    ai_raw_llm_logs: bool = False
+    ai_observability_ttl_seconds: int = 604800
+    ai_observability_max_field_bytes: int = 262144
     places_cache_ttl_seconds: int = 604800
     max_upload_image_bytes: int = 8_388_608
     max_upload_images: int = 8

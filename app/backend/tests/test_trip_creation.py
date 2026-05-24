@@ -13,6 +13,16 @@ def image_bytes(format: str = "JPEG") -> bytes:
     return buffer.getvalue()
 
 
+def contains_raw_bytes(value) -> bool:
+    if isinstance(value, bytes):
+        return True
+    if isinstance(value, dict):
+        return any(contains_raw_bytes(item) for item in value.values())
+    if isinstance(value, list):
+        return any(contains_raw_bytes(item) for item in value)
+    return False
+
+
 def test_categories_endpoint(client):
     response = client.get("/api/categories")
     assert response.status_code == 200
@@ -57,6 +67,21 @@ def test_upload_classify_confirm_and_seeds(client):
     )
     assert confirmed.status_code == 200
     assert confirmed.json()["session"]["confirmed_categories"] == ["pantai", "gunung"]
+    trace_id = confirmed.json()["session"]["latest_flow1_trace_id"]
+    events = client.app.state.store.collections["aiObservabilityEvents"].values()
+    flow_events = [event for event in events if event["trace_id"] == trace_id]
+    event_names = {event["event"] for event in flow_events}
+    assert {
+        "flow1_session_created",
+        "flow1_images_added",
+        "flow1_classification_started",
+        "flow1_classifier_input_prepared",
+        "flow1_classifier_completed",
+        "flow1_categories_confirmed",
+    }.issubset(event_names)
+    input_event = next(event for event in flow_events if event["event"] == "flow1_classifier_input_prepared")
+    assert input_event["payload"]["images"][0]["bytes_loaded"] > 0
+    assert "bytes" not in input_event["payload"]["images"][0]
 
     seeds = client.get("/api/destination-seeds", params={"category": "pantai"})
     assert seeds.status_code == 200
@@ -80,6 +105,12 @@ def test_classify_maps_invalid_classifier_image_to_422(client, monkeypatch):
 
     assert response.status_code == 422
     assert response.json()["error"]["message"] == "Image file is invalid or corrupted"
+    events = client.app.state.store.collections["aiObservabilityEvents"].values()
+    failed = [event for event in events if event["event"] == "flow1_classifier_failed"]
+    assert failed
+    assert failed[-1]["status"] == "error"
+    assert failed[-1]["payload"]["error_class"] == "InvalidClassifierImageError"
+    assert contains_raw_bytes(failed[-1]["payload"]) is False
 
 
 def test_classify_maps_unknown_classifier_category_to_503(client, monkeypatch):
@@ -170,6 +201,51 @@ def test_classification_includes_valid_source_image_refs(client):
     assert sourced.status_code == 200
     assert classified.status_code == 200
     assert classified.json()["classification"]["per_image"][0]["image_id"] == "img_public_cover"
+
+
+def test_source_image_observability_counts_only_new_refs(client):
+    user = signup(client)
+    image = client.app.state.store._insert(
+        "uploadedImages",
+        {
+            "id": "img_public_cover",
+            "owner_id": "usr_other",
+            "filename": "cover.jpg",
+            "content_type": "image/jpeg",
+            "size_bytes": 12,
+            "checksum_sha256": "checksum",
+            "gridfs_id": "img_public_cover",
+        },
+    )
+    client.app.state.store._insert(
+        "tripPlans",
+        {
+            "id": "trip_public_cover",
+            "owner_id": user["id"],
+            "title": "Public Cover",
+            "status": "accepted",
+            "visibility": "public",
+            "categories": ["pantai"],
+            "cover_image_id": image["id"],
+        },
+    )
+    session_id = client.post("/api/trip-creation-sessions", json={"source": "liked_trips"}).json()["session"]["id"]
+
+    first = client.post(f"/api/trip-creation-sessions/{session_id}/source-images", json=[image["id"]])
+    second = client.post(f"/api/trip-creation-sessions/{session_id}/source-images", json=[image["id"]])
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    events = list(client.app.state.store.collections["aiObservabilityEvents"].values())
+    source_events = [
+        event
+        for event in events
+        if event["event"] == "flow1_images_added" and event["payload"]["source_type"] == "source_images"
+    ]
+    assert source_events[-2]["payload"]["added_count"] == 1
+    assert source_events[-1]["payload"]["added_count"] == 0
+    assert source_events[-1]["payload"]["added_image_ids"] == []
+    assert source_events[-1]["payload"]["images"] == []
 
 
 def test_source_images_reject_private_foreign_images(client):

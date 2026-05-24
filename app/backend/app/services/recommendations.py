@@ -11,6 +11,7 @@ from app.ai.prompts.destination_recommendation import (
 )
 from app.core.categories import validate_categories
 from app.core.ids import new_id
+from app.core.observability import AiObservabilityRecorder, elapsed_ms, monotonic_ms, sha256_text
 from app.providers.gemini import GeminiRecommendationProvider, GeminiValidationFailure
 from app.providers.google_places import GooglePlacesProvider
 from app.schemas.recommendations import (
@@ -44,10 +45,18 @@ class RecommendationService:
     ):
         self.store = store
         self.settings = settings
-        self.places_provider = places_provider or GooglePlacesProvider(settings)
-        self.gemini_provider = gemini_provider or GeminiRecommendationProvider(settings)
+        self.observability = AiObservabilityRecorder(store=store, settings=settings)
+        self.places_provider = places_provider or GooglePlacesProvider(settings, observability=self.observability)
+        self.gemini_provider = gemini_provider or GeminiRecommendationProvider(settings, observability=self.observability)
 
-    async def generate_for_session(self, session_id: str, user: dict[str, Any]) -> dict[str, Any]:
+    async def generate_for_session(
+        self,
+        session_id: str,
+        user: dict[str, Any],
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        trace_id = new_id("trc")
+        run_start_ms = monotonic_ms()
         session = await self._get_owned_session(session_id, user)
         confirmed_categories = self._confirmed_categories(session)
         seeds = await self._candidate_seeds(confirmed_categories)
@@ -65,31 +74,112 @@ class RecommendationService:
             image_count=classifier_context["image_count"],
         )
 
+        trace_context = {
+            "trace_id": trace_id,
+            "flow": "flow2",
+            "session_id": session_id,
+            "owner_id": user["id"],
+            "request_id": request_id,
+        }
+        await self.observability.emit(
+            trace_id=trace_id,
+            flow="flow2",
+            stage="run",
+            event="flow2_run_started",
+            session_id=session_id,
+            owner_id=user["id"],
+            request_id=request_id,
+            payload={
+                "confirmed_categories": confirmed_categories,
+                "seed_count": len(seeds),
+                "classifier_mode": self.settings.classifier_mode,
+                "classifier_model_version": self.settings.classifier_model_version,
+                "aggregate_confidences": classifier_context["aggregate_confidences"],
+                "per_image_confidences": classifier_context["per_image_confidences"],
+                "image_count": classifier_context["image_count"],
+                "gemini_model": self.settings.gemini_model,
+                "provider_modes": {
+                    "google_places": "enabled" if self.settings.use_google_places else "disabled",
+                    "gemini": "enabled" if self.gemini_provider.enabled else "disabled",
+                },
+            },
+        )
+
         fallback_stages: list[str] = []
         provider_error = None
         try:
             selection = await self.gemini_provider.select_destinations(
                 selection_context,
                 image_parts=classifier_context["image_parts"],
+                trace_context={
+                    **trace_context,
+                    "stage": "gemini_1",
+                    "event_prefix": "flow2_gemini_1",
+                },
             )
             self._validate_selection(selection, seeds)
         except GeminiValidationFailure as exc:
             fallback_stages.append("gemini_1")
             provider_error = exc.message
+            fallback_message = gemini_fallback_message("Gemini 1", exc)
+            await self.observability.emit(
+                trace_id=trace_id,
+                flow="flow2",
+                stage="gemini_1",
+                event="flow2_gemini_1_fallback",
+                status="fallback",
+                session_id=session_id,
+                owner_id=user["id"],
+                request_id=request_id,
+                payload={
+                    "error_message": fallback_message,
+                    "raw_output_sha256": sha256_text(exc.raw_output) if exc.raw_output else None,
+                    "raw_output_bytes": len((exc.raw_output or "").encode("utf-8")),
+                },
+            )
             selection = deterministic_selection(seeds)
 
-        candidates = await self._ground_selection(selection, seeds, confirmed_categories, fallback_stages)
+        candidates = await self._ground_selection(
+            selection,
+            seeds,
+            confirmed_categories,
+            fallback_stages,
+            trace_context,
+        )
         finalization_context = build_finalization_context_payload(
             confirmed_categories=confirmed_categories,
             candidates=[finalization_candidate_context(candidate) for candidate in candidates],
         )
 
         try:
-            finalization = await self.gemini_provider.finalize_cards(finalization_context)
+            finalization = await self.gemini_provider.finalize_cards(
+                finalization_context,
+                trace_context={
+                    **trace_context,
+                    "stage": "gemini_2",
+                    "event_prefix": "flow2_gemini_2",
+                },
+            )
             self._validate_finalization(finalization, candidates)
         except GeminiValidationFailure as exc:
             fallback_stages.append("gemini_2")
             provider_error = provider_error or exc.message
+            fallback_message = gemini_fallback_message("Gemini 2", exc)
+            await self.observability.emit(
+                trace_id=trace_id,
+                flow="flow2",
+                stage="gemini_2",
+                event="flow2_gemini_2_fallback",
+                status="fallback",
+                session_id=session_id,
+                owner_id=user["id"],
+                request_id=request_id,
+                payload={
+                    "error_message": fallback_message,
+                    "raw_output_sha256": sha256_text(exc.raw_output) if exc.raw_output else None,
+                    "raw_output_bytes": len((exc.raw_output or "").encode("utf-8")),
+                },
+            )
             finalization = deterministic_finalization(candidates)
 
         output = build_recommendation_output(
@@ -108,6 +198,9 @@ class RecommendationService:
             selection=selection,
             fallback_stages=fallback_stages,
             places_candidate_ids=[candidate["candidate_id"] for candidate in candidates],
+            trace_id=trace_id,
+            request_id=request_id,
+            run_duration_ms=elapsed_ms(run_start_ms),
         )
 
     async def list_session_runs(self, session_id: str, user: dict[str, Any]) -> list[dict[str, Any]]:
@@ -216,12 +309,39 @@ class RecommendationService:
         seeds: list[dict[str, Any]],
         confirmed_categories: list[str],
         fallback_stages: list[str],
+        trace_context: dict[str, Any],
     ) -> list[dict[str, Any]]:
         seed_by_id = {seed["id"]: seed for seed in seeds}
         candidates = []
         for pick in sorted(selection.main_seed_picks, key=lambda item: item.rank):
             seed = seed_by_id[pick.seed_id]
-            enrichment = await self._get_or_create_enrichment(seed)
+            start_ms = monotonic_ms()
+            await self._emit_grounding_event(
+                trace_context,
+                event="flow2_places_grounding_started",
+                candidate_id=seed["id"],
+                candidate_kind="seed",
+                payload={"seed_id": seed["id"], "place_id": seed.get("google_place_id")},
+            )
+            enrichment, cache_hit = await self._get_or_create_enrichment(
+                seed,
+                trace_context={**trace_context, "stage": "places_api"},
+            )
+            await self._emit_grounding_event(
+                trace_context,
+                event="flow2_places_grounding_completed",
+                candidate_id=seed["id"],
+                candidate_kind="seed",
+                duration_ms=elapsed_ms(start_ms),
+                payload={
+                    "seed_id": seed["id"],
+                    "cache_hit": cache_hit,
+                    "provider": enrichment.get("provider"),
+                    "provider_place_id": enrichment.get("provider_place_id"),
+                    "lookup_path": lookup_path(enrichment, cache_hit),
+                    "warnings": enrichment.get("warnings", []),
+                },
+            )
             candidates.append(
                 {
                     "candidate_id": seed["id"],
@@ -235,12 +355,21 @@ class RecommendationService:
 
         for pick in sorted(selection.also_like_picks, key=lambda item: item.rank):
             candidate_id = new_id("alc")
+            start_ms = monotonic_ms()
+            await self._emit_grounding_event(
+                trace_context,
+                event="flow2_places_grounding_started",
+                candidate_id=candidate_id,
+                candidate_kind="also_like",
+                payload={"name": pick.name, "region": pick.region, "search_query": pick.search_query},
+            )
             enrichment = await self.places_provider.enrich_suggested_place(
                 candidate_id=candidate_id,
                 name=pick.name,
                 search_query=pick.search_query,
                 region=pick.region,
                 categories=confirmed_categories,
+                trace_context={**trace_context, "stage": "places_api"},
             )
             if enrichment.get("provider") != "google_places":
                 fallback_stages.append("also_like_places")
@@ -256,6 +385,21 @@ class RecommendationService:
                 "google_place_id": enrichment.get("provider_place_id"),
             }
             cached = await self._save_enrichment(enrichment)
+            await self._emit_grounding_event(
+                trace_context,
+                event="flow2_places_grounding_completed",
+                candidate_id=candidate_id,
+                candidate_kind="also_like",
+                duration_ms=elapsed_ms(start_ms),
+                payload={
+                    "name": pick.name,
+                    "cache_hit": False,
+                    "provider": cached.get("provider"),
+                    "provider_place_id": cached.get("provider_place_id"),
+                    "lookup_path": lookup_path(cached, False),
+                    "warnings": cached.get("warnings", []),
+                },
+            )
             candidates.append(
                 {
                     "candidate_id": candidate_id,
@@ -268,7 +412,11 @@ class RecommendationService:
             )
         return candidates
 
-    async def _get_or_create_enrichment(self, seed: dict[str, Any]) -> dict[str, Any]:
+    async def _get_or_create_enrichment(
+        self,
+        seed: dict[str, Any],
+        trace_context: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], bool]:
         cached = await self.store.list_docs("placeEnrichments", seed_id=seed["id"])
         now = datetime.now(UTC)
         for enrichment in sorted(cached, key=lambda item: item.get("updated_at") or now, reverse=True):
@@ -276,10 +424,10 @@ class RecommendationService:
             if expires_at and expires_at.tzinfo is None:
                 expires_at = expires_at.replace(tzinfo=UTC)
             if not expires_at or expires_at > now:
-                return enrichment
+                return enrichment, True
 
-        enrichment = await self.places_provider.enrich_seed(seed)
-        return await self._save_enrichment(enrichment)
+        enrichment = await self.places_provider.enrich_seed(seed, trace_context=trace_context)
+        return await self._save_enrichment(enrichment), False
 
     async def _save_enrichment(self, enrichment: dict[str, Any]) -> dict[str, Any]:
         enrichment["expires_at"] = datetime.now(UTC) + timedelta(seconds=self.settings.places_cache_ttl_seconds)
@@ -296,11 +444,15 @@ class RecommendationService:
         selection: DestinationSeedSelectionOutputV1,
         fallback_stages: list[str],
         places_candidate_ids: list[str],
+        trace_id: str,
+        request_id: str | None,
+        run_duration_ms: int,
     ) -> dict[str, Any]:
         run = await self.store.save_doc(
             "recommendationRuns",
             {
                 "id": new_id("rec"),
+                "trace_id": trace_id,
                 "session_id": session["id"],
                 "owner_id": session["owner_id"],
                 "schema_version": output.schema_version,
@@ -316,6 +468,11 @@ class RecommendationService:
                     "google_places": "enabled" if self.settings.use_google_places else "disabled",
                     "gemini": "enabled" if self.gemini_provider.enabled else "disabled",
                     "gemini_model": self.settings.gemini_model,
+                },
+                "observability": {
+                    "enabled": self.observability.enabled,
+                    "raw_llm_enabled": self.observability.raw_llm_enabled,
+                    "event_count": 0,
                 },
                 "fallback_used": fallback_used,
                 "provider_error": provider_error,
@@ -338,7 +495,59 @@ class RecommendationService:
             session["id"],
             {"status": "recommendations_generated", "latest_recommendation_run_id": run["id"]},
         )
+        await self.observability.emit(
+            trace_id=trace_id,
+            flow="flow2",
+            stage="run",
+            event="flow2_run_completed",
+            session_id=session["id"],
+            owner_id=session["owner_id"],
+            request_id=request_id,
+            run_id=run["id"],
+            duration_ms=run_duration_ms,
+            payload={
+                "recommendation_run_id": run["id"],
+                "recommendation_item_ids": [item["id"] for item in items],
+                "fallback_stages": fallback_stages,
+                "fallback_used": fallback_used,
+                "provider_error": provider_error,
+            },
+        )
+        event_count = len(await self.store.list_docs("aiObservabilityEvents", trace_id=trace_id))
+        updated_run = await self.store.update_doc(
+            "recommendationRuns",
+            run["id"],
+            {"observability": {**run["observability"], "event_count": event_count}},
+        )
+        if updated_run:
+            run = updated_run
         return {"run": run, "items": sorted(items, key=lambda item: item["rank"])}
+
+    async def _emit_grounding_event(
+        self,
+        trace_context: dict[str, Any],
+        *,
+        event: str,
+        candidate_id: str,
+        candidate_kind: str,
+        payload: dict[str, Any],
+        duration_ms: int | None = None,
+    ) -> None:
+        await self.observability.emit(
+            trace_id=trace_context["trace_id"],
+            flow="flow2",
+            stage="places_grounding",
+            event=event,
+            session_id=trace_context.get("session_id"),
+            owner_id=trace_context.get("owner_id"),
+            request_id=trace_context.get("request_id"),
+            duration_ms=duration_ms,
+            payload={
+                "candidate_id": candidate_id,
+                "candidate_kind": candidate_kind,
+                **payload,
+            },
+        )
 
 
 async def latest_classification(store, session_id: str, owner_id: str) -> dict[str, Any] | None:
@@ -407,6 +616,25 @@ def finalization_candidate_context(candidate: dict[str, Any]) -> dict[str, Any]:
         "seed": seed_context(seed),
         "place": enrichment_context(enrichment),
     }
+
+
+def lookup_path(enrichment: dict[str, Any], cache_hit: bool) -> str:
+    warnings = set(enrichment.get("warnings") or [])
+    if cache_hit:
+        return "cache_hit"
+    if enrichment.get("provider") != "google_places":
+        return "curated_fallback"
+    if "places_text_search_grounding" in warnings:
+        return "text_search_grounding"
+    if "places_text_search_fallback" in warnings or "places_id_lookup_failed" in warnings:
+        return "text_search_fallback"
+    return "place_id"
+
+
+def gemini_fallback_message(stage_label: str, exc: GeminiValidationFailure) -> str:
+    if exc.raw_output:
+        return f"{stage_label} output validation failed."
+    return f"{stage_label} provider unavailable or request failed."
 
 
 def deterministic_selection(seeds: list[dict[str, Any]]) -> DestinationSeedSelectionOutputV1:

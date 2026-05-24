@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from app.core.ids import new_id
+from app.core.observability import compact_place_coverage, elapsed_ms, monotonic_ms
 
 PLACES_FIELD_MASK = ",".join(
     [
@@ -47,8 +48,9 @@ TEXT_SEARCH_FIELD_MASK = ",".join(
 
 
 class GooglePlacesProvider:
-    def __init__(self, settings):
+    def __init__(self, settings, observability=None):
         self.settings = settings
+        self.observability = observability
 
     @property
     def enabled(self) -> bool:
@@ -61,44 +63,106 @@ class GooglePlacesProvider:
             "Content-Type": "application/json",
         }
 
-    async def search_text(self, query: str) -> dict[str, Any] | None:
+    async def search_text(self, query: str, trace_context: dict[str, Any] | None = None) -> dict[str, Any] | None:
         if not self.enabled:
             return None
         timeout = httpx.Timeout(self.settings.ai_provider_timeout_seconds)
+        start_ms = monotonic_ms()
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                "https://places.googleapis.com/v1/places:searchText",
-                headers=self._headers(TEXT_SEARCH_FIELD_MASK),
-                json={
-                    "textQuery": query,
-                    "languageCode": "id",
-                    "regionCode": "ID",
-                },
-            )
-            response.raise_for_status()
-            places = response.json().get("places", [])
-            return places[0] if places else None
+            try:
+                response = await client.post(
+                    "https://places.googleapis.com/v1/places:searchText",
+                    headers=self._headers(TEXT_SEARCH_FIELD_MASK),
+                    json={
+                        "textQuery": query,
+                        "languageCode": "id",
+                        "regionCode": "ID",
+                    },
+                )
+                response.raise_for_status()
+                places = response.json().get("places", [])
+                selected = places[0] if places else None
+                await self._emit_places_event(
+                    trace_context,
+                    event="flow2_places_text_search_completed",
+                    status="ok",
+                    duration_ms=elapsed_ms(start_ms),
+                    payload={
+                        "query": query,
+                        "field_mask": TEXT_SEARCH_FIELD_MASK,
+                        "status_code": response.status_code,
+                        "result_count": len(places),
+                        "selected_place_id": (selected or {}).get("id"),
+                        "selected_display_name": ((selected or {}).get("displayName") or {}).get("text"),
+                    },
+                )
+                return selected
+            except httpx.HTTPError as exc:
+                await self._emit_places_event(
+                    trace_context,
+                    event="flow2_places_text_search_completed",
+                    status="error",
+                    duration_ms=elapsed_ms(start_ms),
+                    payload={
+                        "query": query,
+                        "field_mask": TEXT_SEARCH_FIELD_MASK,
+                        "status_code": getattr(getattr(exc, "response", None), "status_code", None),
+                        "error_class": exc.__class__.__name__,
+                    },
+                )
+                raise
 
-    async def get_place_details(self, place_id: str) -> dict[str, Any] | None:
+    async def get_place_details(self, place_id: str, trace_context: dict[str, Any] | None = None) -> dict[str, Any] | None:
         if not self.enabled:
             return None
         timeout = httpx.Timeout(self.settings.ai_provider_timeout_seconds)
+        start_ms = monotonic_ms()
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(
-                f"https://places.googleapis.com/v1/places/{place_id}",
-                headers=self._headers(PLACES_FIELD_MASK),
-            )
-            response.raise_for_status()
-            return response.json()
+            try:
+                response = await client.get(
+                    f"https://places.googleapis.com/v1/places/{place_id}",
+                    headers=self._headers(PLACES_FIELD_MASK),
+                )
+                response.raise_for_status()
+                place = response.json()
+                await self._emit_places_event(
+                    trace_context,
+                    event="flow2_places_details_completed",
+                    status="ok",
+                    duration_ms=elapsed_ms(start_ms),
+                    payload={
+                        "place_id": place_id,
+                        "field_mask": PLACES_FIELD_MASK,
+                        "status_code": response.status_code,
+                        "provider_place_id": place.get("id"),
+                        "display_name": (place.get("displayName") or {}).get("text"),
+                        "field_coverage": compact_place_coverage(place),
+                    },
+                )
+                return place
+            except httpx.HTTPError as exc:
+                await self._emit_places_event(
+                    trace_context,
+                    event="flow2_places_details_completed",
+                    status="error",
+                    duration_ms=elapsed_ms(start_ms),
+                    payload={
+                        "place_id": place_id,
+                        "field_mask": PLACES_FIELD_MASK,
+                        "status_code": getattr(getattr(exc, "response", None), "status_code", None),
+                        "error_class": exc.__class__.__name__,
+                    },
+                )
+                raise
 
-    async def enrich_seed(self, seed: dict[str, Any]) -> dict[str, Any]:
+    async def enrich_seed(self, seed: dict[str, Any], trace_context: dict[str, Any] | None = None) -> dict[str, Any]:
         if not self.settings.use_google_places or not self.settings.google_places_api_key:
             return fallback_enrichment(seed, ["places_unavailable"])
 
         warnings = []
         if seed.get("google_place_id"):
             try:
-                details = await self.get_place_details(seed["google_place_id"])
+                details = await self.get_place_details(seed["google_place_id"], trace_context=trace_context)
                 if details:
                     return normalize_place(seed, details)
                 warnings.append("places_id_lookup_failed")
@@ -106,10 +170,10 @@ class GooglePlacesProvider:
                 warnings.append("places_id_lookup_failed")
 
         try:
-            place = await self.search_text(seed["search_query"])
+            place = await self.search_text(seed["search_query"], trace_context=trace_context)
             if not place:
                 return fallback_enrichment(seed, warnings + ["places_unavailable"])
-            details = await self.get_place_details(place["id"])
+            details = await self.get_place_details(place["id"], trace_context=trace_context)
             return normalize_place(seed, details or place, warnings=warnings + ["places_text_search_fallback"])
         except (httpx.HTTPError, TimeoutError):
             return fallback_enrichment(seed, warnings + ["places_unavailable"])
@@ -122,6 +186,7 @@ class GooglePlacesProvider:
         search_query: str | None = None,
         region: str | None = None,
         categories: list[str] | None = None,
+        trace_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         seed = {
             "id": candidate_id,
@@ -133,13 +198,38 @@ class GooglePlacesProvider:
         if not self.enabled:
             return fallback_enrichment(seed, ["places_unavailable"])
         try:
-            place = await self.search_text(seed["search_query"])
+            place = await self.search_text(seed["search_query"], trace_context=trace_context)
             if not place:
                 return fallback_enrichment(seed, ["places_unavailable"])
-            details = await self.get_place_details(place["id"])
+            details = await self.get_place_details(place["id"], trace_context=trace_context)
             return normalize_place(seed, details or place, warnings=["places_text_search_grounding"])
         except (httpx.HTTPError, TimeoutError):
             return fallback_enrichment(seed, ["places_unavailable"])
+
+    async def _emit_places_event(
+        self,
+        trace_context: dict[str, Any] | None,
+        *,
+        event: str,
+        status: str,
+        duration_ms: int,
+        payload: dict[str, Any],
+    ) -> None:
+        if not self.observability or not trace_context:
+            return
+        await self.observability.emit(
+            trace_id=trace_context["trace_id"],
+            flow=trace_context.get("flow", "flow2"),
+            stage=trace_context.get("stage", "places_api"),
+            event=event,
+            status=status,
+            session_id=trace_context.get("session_id"),
+            owner_id=trace_context.get("owner_id"),
+            request_id=trace_context.get("request_id"),
+            run_id=trace_context.get("run_id"),
+            duration_ms=duration_ms,
+            payload=payload,
+        )
 
 
 def fallback_enrichment(seed: dict[str, Any], warnings: list[str]) -> dict[str, Any]:

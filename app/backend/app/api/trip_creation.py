@@ -1,12 +1,13 @@
 from io import BytesIO
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from PIL import Image, UnidentifiedImageError
 
 from app.api.deps import get_settings_from_app, get_store, require_user
 from app.core.categories import validate_categories
 from app.core.ids import new_id
+from app.core.observability import AiObservabilityRecorder, elapsed_ms, monotonic_ms
 from app.schemas.api import ConfirmCategoriesRequest, TripCreationSessionCreateRequest
 from app.schemas.recommendations import SelectedRecommendationsRequest
 from app.services.classifier import (
@@ -18,6 +19,26 @@ from app.services.classifier import (
 from app.services.recommendations import RecommendationService
 
 router = APIRouter()
+
+
+def request_id(request: Request) -> str | None:
+    return getattr(request.state, "request_id", None)
+
+
+def flow1_trace_id(session: dict[str, Any]) -> str:
+    return session.get("latest_flow1_trace_id") or new_id("trc")
+
+
+def image_metadata(image: dict[str, Any], *, source: str | None = None) -> dict[str, Any]:
+    return {
+        "image_id": image.get("id"),
+        "source": source,
+        "content_type": image.get("content_type"),
+        "size_bytes": image.get("size_bytes"),
+        "checksum_sha256": image.get("checksum_sha256"),
+        "has_bytes": bool(image.get("bytes")),
+        "bytes_loaded": len(image.get("bytes") or b""),
+    }
 
 
 def validate_image_bytes(data: bytes) -> None:
@@ -108,9 +129,12 @@ async def session_display(store, session: dict[str, Any]) -> dict[str, Any]:
 @router.post("", status_code=201)
 async def create_trip_session(
     payload: TripCreationSessionCreateRequest,
+    request: Request,
     store=Depends(get_store),
+    settings=Depends(get_settings_from_app),
     user=Depends(require_user),
 ):
+    trace_id = new_id("trc")
     session = await store.save_doc(
         "tripCreationSessions",
         {
@@ -123,7 +147,18 @@ async def create_trip_session(
             "predicted_categories": [],
             "confirmed_categories": [],
             "selected_recommendation_ids": [],
+            "latest_flow1_trace_id": trace_id,
         },
+    )
+    await AiObservabilityRecorder(store=store, settings=settings).emit(
+        trace_id=trace_id,
+        flow="flow1",
+        stage="session",
+        event="flow1_session_created",
+        session_id=session["id"],
+        owner_id=user["id"],
+        request_id=request_id(request),
+        payload={"source": payload.source},
     )
     return {"session": await session_display(store, session)}
 
@@ -141,12 +176,14 @@ async def get_trip_session(
 @router.post("/{session_id}/images")
 async def upload_images(
     session_id: str,
+    request: Request,
     files: list[UploadFile] = File(...),
     store=Depends(get_store),
     settings=Depends(get_settings_from_app),
     user=Depends(require_user),
 ):
     session = await get_owned_session(session_id, store, user)
+    trace_id = flow1_trace_id(session)
     if len(files) < 1 or len(files) > settings.max_upload_images:
         raise HTTPException(status_code=422, detail=f"Upload between 1 and {settings.max_upload_images} images")
     total_images = (
@@ -170,7 +207,24 @@ async def upload_images(
         uploaded.append(await store.save_image(user["id"], file, data))
     image_ids = [*session.get("image_ids", []), *[image["id"] for image in uploaded]]
     updated = await store.update_doc(
-        "tripCreationSessions", session_id, {"image_ids": image_ids, "status": "images_uploaded"}
+        "tripCreationSessions",
+        session_id,
+        {"image_ids": image_ids, "status": "images_uploaded", "latest_flow1_trace_id": trace_id},
+    )
+    await AiObservabilityRecorder(store=store, settings=settings).emit(
+        trace_id=trace_id,
+        flow="flow1",
+        stage="images",
+        event="flow1_images_added",
+        session_id=session_id,
+        owner_id=user["id"],
+        request_id=request_id(request),
+        payload={
+            "source_type": "upload",
+            "added_count": len(uploaded),
+            "total_image_count": len(image_ids) + len(session.get("source_image_refs", [])),
+            "images": [image_metadata(image, source="upload") for image in uploaded],
+        },
     )
     return {"session": updated, "images": uploaded}
 
@@ -178,14 +232,17 @@ async def upload_images(
 @router.post("/{session_id}/source-images")
 async def add_source_images(
     session_id: str,
+    request: Request,
     image_ids: list[str],
     store=Depends(get_store),
     settings=Depends(get_settings_from_app),
     user=Depends(require_user),
 ):
     session = await get_owned_session(session_id, store, user)
+    trace_id = flow1_trace_id(session)
     refs = list(session.get("source_image_refs", []))
     existing_ids = {ref.get("image_id") for ref in refs}
+    added_image_ids = []
     for image_id in image_ids:
         image = await store.find_one("uploadedImages", id=image_id)
         if not image:
@@ -197,6 +254,7 @@ async def add_source_images(
         if image_id not in existing_ids:
             refs.append({"image_id": image_id, "source": "saved_or_liked_trip_plan"})
             existing_ids.add(image_id)
+            added_image_ids.append(image_id)
     total_images = len(session.get("image_ids", [])) + len(refs)
     if total_images > settings.max_upload_images:
         raise HTTPException(
@@ -206,7 +264,30 @@ async def add_source_images(
     updated = await store.update_doc(
         "tripCreationSessions",
         session_id,
-        {"source_image_refs": refs, "status": "images_selected"},
+        {"source_image_refs": refs, "status": "images_selected", "latest_flow1_trace_id": trace_id},
+    )
+    source_images = [
+        image
+        for image_id in added_image_ids
+        for image in [await store.find_one("uploadedImages", id=image_id)]
+        if image
+    ]
+    await AiObservabilityRecorder(store=store, settings=settings).emit(
+        trace_id=trace_id,
+        flow="flow1",
+        stage="images",
+        event="flow1_images_added",
+        session_id=session_id,
+        owner_id=user["id"],
+        request_id=request_id(request),
+        payload={
+            "source_type": "source_images",
+            "requested_image_ids": image_ids,
+            "added_image_ids": added_image_ids,
+            "added_count": len(added_image_ids),
+            "total_image_count": len(updated.get("image_ids", [])) + len(updated.get("source_image_refs", [])),
+            "images": [image_metadata(image, source="saved_or_liked_trip_plan") for image in source_images],
+        },
     )
     return {"session": await session_display(store, updated)}
 
@@ -214,12 +295,17 @@ async def add_source_images(
 @router.post("/{session_id}/classify")
 async def classify_session(
     session_id: str,
+    request: Request,
     store=Depends(get_store),
     settings=Depends(get_settings_from_app),
     user=Depends(require_user),
 ):
     session = await get_owned_session(session_id, store, user)
+    trace_id = flow1_trace_id(session)
+    recorder = AiObservabilityRecorder(store=store, settings=settings)
+    start_ms = monotonic_ms()
     images = []
+    missing_image_ids = []
     for image_id in session.get("image_ids", []):
         image = await store.find_one("uploadedImages", id=image_id)
         if image:
@@ -227,6 +313,8 @@ async def classify_session(
             if image_bytes:
                 image["bytes"] = image_bytes
             images.append(image)
+        else:
+            missing_image_ids.append(image_id)
     for ref in session.get("source_image_refs", []):
         image_id = ref.get("image_id")
         if not image_id:
@@ -237,15 +325,69 @@ async def classify_session(
             if image_bytes:
                 image["bytes"] = image_bytes
             images.append(image)
+        else:
+            missing_image_ids.append(image_id)
     if not images:
         raise HTTPException(status_code=422, detail="At least one uploaded image is required")
+    await recorder.emit(
+        trace_id=trace_id,
+        flow="flow1",
+        stage="classification",
+        event="flow1_classification_started",
+        session_id=session_id,
+        owner_id=user["id"],
+        request_id=request_id(request),
+        payload={
+            "classifier_mode": settings.classifier_mode,
+            "classifier_model_version": settings.classifier_model_version,
+            "image_count": len(images),
+        },
+    )
+    await recorder.emit(
+        trace_id=trace_id,
+        flow="flow1",
+        stage="classification",
+        event="flow1_classifier_input_prepared",
+        session_id=session_id,
+        owner_id=user["id"],
+        request_id=request_id(request),
+        payload={
+            "valid_image_ids": [image["id"] for image in images],
+            "missing_image_ids": missing_image_ids,
+            "images": [image_metadata(image) for image in images],
+        },
+    )
     classifier = get_classifier(settings)
     try:
         per_image = await classifier.predict(images)
         aggregated = aggregate_predictions(per_image)
     except InvalidClassifierImageError as exc:
+        await recorder.emit(
+            trace_id=trace_id,
+            flow="flow1",
+            stage="classification",
+            event="flow1_classifier_failed",
+            status="error",
+            session_id=session_id,
+            owner_id=user["id"],
+            request_id=request_id(request),
+            duration_ms=elapsed_ms(start_ms),
+            payload={"error_class": exc.__class__.__name__, "safe_message": "Image file is invalid or corrupted"},
+        )
         raise HTTPException(status_code=422, detail="Image file is invalid or corrupted") from exc
     except ClassifierError as exc:
+        await recorder.emit(
+            trace_id=trace_id,
+            flow="flow1",
+            stage="classification",
+            event="flow1_classifier_failed",
+            status="error",
+            session_id=session_id,
+            owner_id=user["id"],
+            request_id=request_id(request),
+            duration_ms=elapsed_ms(start_ms),
+            payload={"error_class": exc.__class__.__name__, "safe_message": "Image classification is unavailable"},
+        )
         raise HTTPException(status_code=503, detail="Image classification is unavailable") from exc
     result = await store.save_doc(
         "classificationResults",
@@ -262,7 +404,24 @@ async def classify_session(
     await store.update_doc(
         "tripCreationSessions",
         session_id,
-        {"predicted_categories": aggregated, "status": "classified"},
+        {"predicted_categories": aggregated, "status": "classified", "latest_flow1_trace_id": trace_id},
+    )
+    await recorder.emit(
+        trace_id=trace_id,
+        flow="flow1",
+        stage="classification",
+        event="flow1_classifier_completed",
+        session_id=session_id,
+        owner_id=user["id"],
+        request_id=request_id(request),
+        duration_ms=elapsed_ms(start_ms),
+        payload={
+            "classifier_mode": settings.classifier_mode,
+            "classifier_model_version": settings.classifier_model_version,
+            "per_image": per_image,
+            "aggregated": aggregated,
+            "top_category": aggregated[0]["category"] if aggregated else None,
+        },
     )
     return {"classification": result}
 
@@ -270,11 +429,14 @@ async def classify_session(
 @router.post("/{session_id}/confirm-categories")
 async def confirm_categories(
     session_id: str,
+    request: Request,
     payload: ConfirmCategoriesRequest,
     store=Depends(get_store),
+    settings=Depends(get_settings_from_app),
     user=Depends(require_user),
 ):
-    await get_owned_session(session_id, store, user)
+    existing_session = await get_owned_session(session_id, store, user)
+    trace_id = flow1_trace_id(existing_session)
     try:
         categories = validate_categories(payload.categories)
     except ValueError as exc:
@@ -282,7 +444,23 @@ async def confirm_categories(
     session = await store.update_doc(
         "tripCreationSessions",
         session_id,
-        {"confirmed_categories": categories, "status": "categories_confirmed"},
+        {"confirmed_categories": categories, "status": "categories_confirmed", "latest_flow1_trace_id": trace_id},
+    )
+    predicted_categories = existing_session.get("predicted_categories") or []
+    predicted_top = predicted_categories[0]["category"] if predicted_categories else None
+    await AiObservabilityRecorder(store=store, settings=settings).emit(
+        trace_id=trace_id,
+        flow="flow1",
+        stage="category_confirmation",
+        event="flow1_categories_confirmed",
+        session_id=session_id,
+        owner_id=user["id"],
+        request_id=request_id(request),
+        payload={
+            "predicted_categories": predicted_categories,
+            "confirmed_categories": categories,
+            "manual_override": bool(predicted_top and predicted_top not in categories),
+        },
     )
     return {"session": await session_display(store, session)}
 
@@ -290,12 +468,13 @@ async def confirm_categories(
 @router.post("/{session_id}/recommendations")
 async def generate_recommendations(
     session_id: str,
+    request: Request,
     store=Depends(get_store),
     settings=Depends(get_settings_from_app),
     user=Depends(require_user),
 ):
     service = RecommendationService(store=store, settings=settings)
-    return await service.generate_for_session(session_id, user)
+    return await service.generate_for_session(session_id, user, request_id=request_id(request))
 
 
 @router.get("/{session_id}/recommendations")

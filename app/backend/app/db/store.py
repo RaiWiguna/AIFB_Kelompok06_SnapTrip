@@ -55,6 +55,7 @@ class MemoryStore(BaseStore):
                 "placeEnrichments",
                 "recommendationRuns",
                 "recommendationItems",
+                "aiObservabilityEvents",
             )
         }
         self.gridfs: dict[str, bytes] = {}
@@ -161,6 +162,9 @@ class MongoStore(BaseStore):
         await self.db.recommendationRuns.create_index([("session_id", ASCENDING), ("owner_id", ASCENDING)])
         await self.db.recommendationItems.create_index([("run_id", ASCENDING), ("rank", ASCENDING)])
         await self.db.recommendationItems.create_index([("session_id", ASCENDING), ("owner_id", ASCENDING)])
+        await self.db.aiObservabilityEvents.create_index([("expires_at", ASCENDING)], expireAfterSeconds=0)
+        await self.db.aiObservabilityEvents.create_index([("trace_id", ASCENDING)])
+        await self.db.aiObservabilityEvents.create_index([("session_id", ASCENDING), ("owner_id", ASCENDING)])
 
     async def ready(self) -> dict[str, Any]:
         try:
