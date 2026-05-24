@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 DocumentType = Literal["trip_memo", "full_itinerary", "budget_plan"]
 PlannerStatus = Literal["idle", "working", "needs_input", "ready_to_review", "interrupted", "accepted"]
 Visibility = Literal["private", "invite_only", "public"]
+BudgetMode = Literal["estimated", "fixed_total", "max_total", "fixed_per_person", "max_per_person", "daily_cap"]
 
 
 class PlannerStartRequest(BaseModel):
@@ -120,6 +121,14 @@ class BudgetDailyRow(BaseModel):
     amounts: dict[str, int]
 
 
+class BudgetConstraint(BaseModel):
+    budget_mode: BudgetMode
+    amount_idr: int = Field(ge=0)
+    traveler_count: int = Field(ge=1, le=20)
+    strict: bool = True
+    source_text: str = Field(min_length=1)
+
+
 class BudgetPlanDocumentV1(BaseModel):
     schema_version: Literal["budget_plan.v1"] = "budget_plan.v1"
     categories: list[BudgetCategory] = Field(min_length=1)
@@ -128,6 +137,7 @@ class BudgetPlanDocumentV1(BaseModel):
     total_label: str = Field(min_length=1)
     estimated_total_idr: int | None = Field(default=None, ge=0)
     per_person_idr: int | None = Field(default=None, ge=0)
+    budget_constraint: BudgetConstraint | None = None
 
 
 class PlannerAgentAction(BaseModel):
@@ -141,4 +151,3 @@ class PlannerAgentStepV1(BaseModel):
     actions: list[PlannerAgentAction] = Field(default_factory=list)
     stop: bool = False
     needs_user_input: bool = False
-

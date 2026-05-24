@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import secrets
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -11,6 +12,7 @@ from app.core.categories import validate_categories
 from app.core.ids import new_id
 from app.providers.google_places import GooglePlacesProvider
 from app.schemas.planner import (
+    BudgetConstraint,
     BudgetPlanDocumentV1,
     FullItineraryDocumentV1,
     PlannerAcceptRequest,
@@ -32,6 +34,20 @@ from app.services.trip_detail import (
 PLANNER_DOCUMENT_TYPES = ("trip_memo", "full_itinerary", "budget_plan")
 MAX_AGENT_TURNS = 8
 MAX_TOOL_CALLS = 12
+BUDGET_ALLOCATION_WEIGHTS = {
+    "accommodation": 0.35,
+    "transport": 0.20,
+    "meals": 0.18,
+    "activities": 0.20,
+    "other": 0.07,
+}
+BUDGET_LABELS = {
+    "accommodation": "Accommodation",
+    "transport": "Transport",
+    "meals": "Meals",
+    "activities": "Activities & Tickets",
+    "other": "Other",
+}
 
 
 def now() -> datetime:
@@ -313,7 +329,7 @@ class PlannerService:
             while turn_count < MAX_AGENT_TURNS and tool_count < MAX_TOOL_CALLS:
                 turn_count += 1
                 await self._emit_event(session["id"], "turn_started", f"Reasoning turn {turn_count}", run_id=run["id"], payload={})
-                actions = self._plan_actions(user_text, trigger=trigger, turn_count=turn_count)
+                actions = self._plan_actions(user_text, session=session, trigger=trigger, turn_count=turn_count)
                 if not actions:
                     await self._assistant_response(session["id"], run["id"], self._direct_response(user_text))
                     break
@@ -366,7 +382,7 @@ class PlannerService:
             )
             raise
 
-    def _plan_actions(self, user_text: str, *, trigger: str, turn_count: int) -> list[dict[str, Any]]:
+    def _plan_actions(self, user_text: str, *, session: dict[str, Any], trigger: str, turn_count: int) -> list[dict[str, Any]]:
         text = user_text.lower()
         if trigger == "auto_initial":
             return [
@@ -387,10 +403,24 @@ class PlannerService:
                 {"tool": "patch_memo_section", "args": {"intent": user_text}},
                 {"tool": "validate_documents", "args": {}},
             ]
-        if "budget" in text or "biaya" in text or "cheap" in text or "murah" in text:
+        if budget_request_is_ambiguous(user_text):
+            return [
+                {
+                    "tool": "request_clarification",
+                    "args": {
+                        "reason": "budget_scope_ambiguous",
+                        "question": "Is that budget for the whole trip, per person, or per day?",
+                    },
+                }
+            ]
+        budget_constraint = parse_budget_constraint(user_text, int(session.get("traveler_count") or 1))
+        if budget_constraint or "budget" in text or "biaya" in text or "cheap" in text or "murah" in text:
+            args = {"intent": user_text}
+            if budget_constraint:
+                args["budget_constraint"] = budget_constraint.model_dump()
             return [
                 {"tool": "grounded_web_research", "args": {"query": user_text}},
-                {"tool": "patch_budget_category", "args": {"intent": user_text}},
+                {"tool": "patch_budget_category", "args": args},
                 {"tool": "validate_documents", "args": {}},
             ]
         if "day" in text or "hari" in text or "duration" in text or "durasi" in text:
@@ -434,6 +464,12 @@ class PlannerService:
                 await self._emit_event(planner_session_id, event, "Validated planner documents", run_id=run_id, payload=result)
             elif tool == "compute_budget_summary":
                 result = await self._compute_budget_summary(planner_session_id)
+            elif tool == "request_clarification":
+                result = {
+                    "needs_user_input": True,
+                    "question": action.get("args", {}).get("question") or "Can you clarify the request?",
+                    "reason": action.get("args", {}).get("reason") or "clarification_needed",
+                }
             else:
                 result = {"ok": True}
             await self._append_message(planner_session_id, "tool", json.dumps({"tool": tool, "result": result}, default=str), visible=False, run_id=run_id)
@@ -480,6 +516,11 @@ class PlannerService:
                 "per_person_idr": round(total / max(context["session"]["traveler_count"], 1)),
             }
         ).model_dump()
+        document = normalize_budget_content(
+            document,
+            traveler_count=int(context["session"]["traveler_count"]),
+            duration_days=int(context["session"]["duration_days"]),
+        )
         return await self._commit_document(planner_session_id, run_id, "budget_plan", "budget_plan.v1", document)
 
     async def _patch_itinerary(self, planner_session_id: str, run_id: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -520,19 +561,38 @@ class PlannerService:
         documents = await self._latest_documents(planner_session_id)
         if "budget_plan" not in documents:
             return await self._replace_budget_plan(planner_session_id, run_id)
+        session = await self.store.find_one("plannerSessions", id=planner_session_id)
+        traveler_count = int((session or {}).get("traveler_count") or 1)
+        duration = int((session or {}).get("duration_days") or 1)
         content = documents["budget_plan"]["content"]
         total = int(content.get("estimated_total_idr") or 0) or 500_000
         intent = (args.get("intent") or "").lower()
-        if "cheap" in intent or "murah" in intent or "cap" in intent or "under" in intent:
+        constraint = None
+        if args.get("budget_constraint"):
+            constraint = BudgetConstraint.model_validate(args["budget_constraint"])
+        elif parsed := parse_budget_constraint(args.get("intent") or "", traveler_count):
+            constraint = parsed
+        if constraint:
+            content = normalize_budget_content(
+                content,
+                traveler_count=traveler_count,
+                duration_days=duration,
+                constraint=constraint,
+            )
+        elif "cheap" in intent or "murah" in intent or "cap" in intent or "under" in intent:
             total = round(total * 0.85)
+            content = normalize_budget_content(
+                {**content, "estimated_total_idr": total, "budget_constraint": None},
+                traveler_count=traveler_count,
+                duration_days=duration,
+            )
         else:
             total = round(total * 1.12)
-        content["estimated_total_idr"] = total
-        content["total_amount"] = format_idr(total)
-        content["per_person_idr"] = round(total / 2)
-        if content.get("categories"):
-            content["categories"][0]["amount"] = format_idr(round(total * 0.35))
-            content["categories"][0]["note"] = "(Adjusted estimate)"
+            content = normalize_budget_content(
+                {**content, "estimated_total_idr": total, "budget_constraint": None},
+                traveler_count=traveler_count,
+                duration_days=duration,
+            )
         document = BudgetPlanDocumentV1.model_validate(content).model_dump()
         return await self._commit_document(planner_session_id, run_id, "budget_plan", "budget_plan.v1", document)
 
@@ -806,19 +866,29 @@ class PlannerService:
 
     def _summary_response(self, actions: list[dict[str, Any]]) -> str:
         tools = {action["tool"] for action in actions}
+        if "request_clarification" in tools:
+            for action in actions:
+                if action["tool"] == "request_clarification":
+                    return action.get("args", {}).get("question") or "I need one clarification before changing the plan."
+            return "I need one clarification before changing the plan."
         if {"replace_trip_memo", "replace_full_itinerary", "replace_budget_plan"}.issubset(tools):
             return "I drafted the trip memo, full itinerary, and budget plan from your selected destination, dates, and group size."
         if "places_text_search" in tools:
             return "I researched the added destination, updated the itinerary, adjusted the budget, and added a memo note."
         if "patch_budget_category" in tools:
-            return "I updated the budget estimates and kept the structured documents valid."
+            return "I updated the budget constraint, recalculated totals, and kept the structured documents valid."
         return "I updated the planner documents and validated the latest draft."
 
 
 def validate_document_set(documents: dict[str, Any]) -> dict[str, Any]:
     missing = [doc_type for doc_type in PLANNER_DOCUMENT_TYPES if doc_type not in documents]
     invalid = [doc_type for doc_type, doc in documents.items() if doc_type in PLANNER_DOCUMENT_TYPES and not doc.get("valid")]
-    return {"valid": not missing and not invalid, "missing": missing, "invalid": invalid}
+    budget_errors = []
+    if "budget_plan" in documents:
+        budget_errors = validate_budget_content(documents["budget_plan"].get("content") or {})
+        if budget_errors and "budget_plan" not in invalid:
+            invalid.append("budget_plan")
+    return {"valid": not missing and not invalid, "missing": missing, "invalid": invalid, "budget_errors": budget_errors}
 
 
 def empty_context_summary() -> dict[str, Any]:
@@ -837,7 +907,15 @@ def empty_memo() -> dict[str, Any]:
 
 
 def empty_budget() -> dict[str, Any]:
-    return {"categories": [], "daily": [], "total_amount": "Budget TBD", "total_label": "", "estimated_total_idr": None, "per_person_idr": None}
+    return {
+        "categories": [],
+        "daily": [],
+        "total_amount": "Budget TBD",
+        "total_label": "",
+        "estimated_total_idr": None,
+        "per_person_idr": None,
+        "budget_constraint": None,
+    }
 
 
 def item_categories(item: dict[str, Any] | None) -> list[str]:
@@ -865,6 +943,219 @@ def estimate_total_idr(items: list[dict[str, Any]], days: int, travelers: int) -
     if not base:
         base = 350_000
     return round(base * max(days, 1) * max(travelers, 1))
+
+
+def parse_budget_constraint(source_text: str, traveler_count: int) -> BudgetConstraint | None:
+    amount = extract_budget_amount_idr(source_text)
+    if amount is None or budget_request_is_ambiguous(source_text):
+        return None
+    text = source_text.lower()
+    per_person = any(marker in text for marker in ["per orang", "per person", "pp", "/person", "each person"])
+    daily = any(marker in text for marker in ["harian", "per hari", "daily", "per day", "/day"])
+    fixed = any(marker in text for marker in [" fix", "fixed", "harus", "tepat", "exact", "pas"])
+    capped = any(
+        marker in text
+        for marker in ["max", "maks", "maksimal", "jangan lebih", "tidak lebih", "under", "below", "cap", "limit"]
+    )
+    if daily:
+        mode = "daily_cap"
+    elif per_person and capped:
+        mode = "max_per_person"
+    elif per_person:
+        mode = "fixed_per_person"
+    elif capped:
+        mode = "max_total"
+    elif fixed or "total" in text:
+        mode = "fixed_total"
+    else:
+        return None
+    return BudgetConstraint(
+        budget_mode=mode,
+        amount_idr=amount,
+        traveler_count=traveler_count,
+        strict=True,
+        source_text=source_text.strip(),
+    )
+
+
+def budget_request_is_ambiguous(source_text: str) -> bool:
+    amount = extract_budget_amount_idr(source_text)
+    if amount is None:
+        return False
+    text = source_text.lower()
+    mentions_budget = any(marker in text for marker in ["budget", "biaya", "rp", "juta", "jt", "million"])
+    has_scope = any(marker in text for marker in ["total", "per orang", "per person", "pp", "harian", "per hari", "daily", "per day"])
+    has_mode = any(
+        marker in text
+        for marker in [" fix", "fixed", "harus", "tepat", "exact", "pas", "max", "maks", "maksimal", "jangan lebih", "under", "below", "cap", "limit"]
+    )
+    return mentions_budget and not has_scope and not has_mode
+
+
+def extract_budget_amount_idr(source_text: str) -> int | None:
+    text = source_text.lower()
+    suffix_match = re.search(r"(?:rp\s*)?(\d+(?:[.,]\d+)?)\s*(juta|jt|million|m)\b", text)
+    if suffix_match:
+        return round(float(suffix_match.group(1).replace(",", ".")) * 1_000_000)
+    rp_match = re.search(r"rp\s*([\d.,]+)", text)
+    if rp_match:
+        digits = re.sub(r"\D", "", rp_match.group(1))
+        return int(digits) if digits else None
+    number_match = re.search(r"\b(\d{1,3}(?:[.,]\d{3})+|\d{6,})\b", text)
+    if number_match:
+        digits = re.sub(r"\D", "", number_match.group(1))
+        return int(digits) if digits else None
+    return None
+
+
+def normalize_budget_content(
+    content: dict[str, Any],
+    *,
+    traveler_count: int,
+    duration_days: int,
+    constraint: BudgetConstraint | None = None,
+) -> dict[str, Any]:
+    total = int(content.get("estimated_total_idr") or 0) or 500_000
+    duration = max(duration_days, 1)
+    if constraint:
+        if constraint.budget_mode == "fixed_total":
+            total = constraint.amount_idr
+        elif constraint.budget_mode == "max_total":
+            total = min(total, constraint.amount_idr)
+        elif constraint.budget_mode == "fixed_per_person":
+            total = constraint.amount_idr * traveler_count
+        elif constraint.budget_mode == "max_per_person":
+            total = min(total, constraint.amount_idr * traveler_count)
+        elif constraint.budget_mode == "daily_cap":
+            total = min(total, constraint.amount_idr * duration)
+    normalized = dict(content)
+    normalized["estimated_total_idr"] = total
+    normalized["per_person_idr"] = round(total / max(traveler_count, 1))
+    normalized["total_amount"] = format_idr(total)
+    normalized["total_label"] = budget_total_label(traveler_count, duration, constraint)
+    normalized["budget_constraint"] = constraint.model_dump() if constraint else None
+    normalized["categories"] = normalize_budget_categories(normalized.get("categories") or [], total, constraint)
+    normalized["daily"] = normalize_budget_daily(normalized.get("daily") or [], total, duration, constraint)
+    return normalized
+
+
+def budget_total_label(traveler_count: int, duration_days: int, constraint: BudgetConstraint | None) -> str:
+    base = f"for {traveler_count} people - {duration_days} days"
+    if not constraint:
+        return base
+    labels = {
+        "fixed_total": "fixed total",
+        "max_total": "maximum total",
+        "fixed_per_person": "fixed per-person",
+        "max_per_person": "maximum per-person",
+        "daily_cap": "daily cap",
+    }
+    return f"{labels[constraint.budget_mode]} {base}"
+
+
+def normalize_budget_categories(
+    categories: list[dict[str, Any]],
+    total: int,
+    constraint: BudgetConstraint | None,
+) -> list[dict[str, Any]]:
+    category_ids = [category.get("id") for category in categories if category.get("id")] or list(BUDGET_ALLOCATION_WEIGHTS)
+    amounts = distribute_amount(total, category_ids)
+    note = "(Fixed budget constraint)" if constraint and constraint.budget_mode.startswith("fixed") else "(Estimated within budget constraint)" if constraint else "(Estimated)"
+    normalized = []
+    existing_by_id = {category.get("id"): category for category in categories}
+    for category_id in category_ids:
+        original = existing_by_id.get(category_id) or {}
+        amount = amounts[category_id]
+        label = original.get("label") or BUDGET_LABELS.get(category_id, category_id.replace("_", " ").title())
+        items = list(original.get("items") or [])
+        line = {"label": label, "amount": format_idr(amount), "detail": "Adjusted to match planner budget constraint."}
+        if items:
+            items[0] = {**items[0], **line}
+        else:
+            items = [line]
+        normalized.append({**original, "id": category_id, "label": label, "amount": format_idr(amount), "note": note, "items": items})
+    return normalized
+
+
+def normalize_budget_daily(
+    rows: list[dict[str, Any]],
+    total: int,
+    duration_days: int,
+    constraint: BudgetConstraint | None,
+) -> list[dict[str, Any]]:
+    count = max(len(rows), duration_days, 1)
+    row_ids = [str(index) for index in range(count)]
+    row_totals = distribute_amount(total, row_ids)
+    normalized = []
+    for index in range(count):
+        original = rows[index] if index < len(rows) else {}
+        day_total = row_totals[str(index)]
+        if constraint and constraint.budget_mode == "daily_cap":
+            day_total = min(day_total, constraint.amount_idr)
+        amount_keys = list((original.get("amounts") or {}).keys()) or list(BUDGET_ALLOCATION_WEIGHTS)
+        amounts = distribute_amount(day_total, amount_keys)
+        normalized.append(
+            {
+                **original,
+                "day": int(original.get("day") or index + 1),
+                "title": original.get("title") or f"Day {index + 1}",
+                "route": original.get("route") or "Budget allocation",
+                "amounts": amounts,
+            }
+        )
+    return normalized
+
+
+def distribute_amount(total: int, keys: list[str]) -> dict[str, int]:
+    if not keys:
+        return {}
+    weights = [BUDGET_ALLOCATION_WEIGHTS.get(key, 1 / len(keys)) for key in keys]
+    weight_total = sum(weights) or 1
+    distributed = {}
+    assigned = 0
+    for key, weight in zip(keys[:-1], weights[:-1], strict=False):
+        value = round(total * (weight / weight_total))
+        distributed[key] = value
+        assigned += value
+    distributed[keys[-1]] = total - assigned
+    return distributed
+
+
+def validate_budget_content(content: dict[str, Any]) -> list[str]:
+    errors = []
+    constraint_data = content.get("budget_constraint")
+    if not constraint_data:
+        return errors
+    constraint = BudgetConstraint.model_validate(constraint_data)
+    total = int(content.get("estimated_total_idr") or 0)
+    per_person = int(content.get("per_person_idr") or 0)
+    category_total = sum(parse_idr_amount(category.get("amount")) for category in content.get("categories") or [])
+    daily_totals = [sum(int(value or 0) for value in (row.get("amounts") or {}).values()) for row in content.get("daily") or []]
+    if category_total != total:
+        errors.append("budget_category_rollup_mismatch")
+    if sum(daily_totals) != total:
+        errors.append("budget_daily_rollup_mismatch")
+    expected_per_person = round(total / max(constraint.traveler_count, 1))
+    if per_person != expected_per_person:
+        errors.append("budget_per_person_mismatch")
+    if constraint.budget_mode == "fixed_total" and total != constraint.amount_idr:
+        errors.append("fixed_total_budget_mismatch")
+    if constraint.budget_mode == "max_total" and total > constraint.amount_idr:
+        errors.append("max_total_budget_exceeded")
+    if constraint.budget_mode == "fixed_per_person" and per_person != constraint.amount_idr:
+        errors.append("fixed_per_person_budget_mismatch")
+    if constraint.budget_mode == "max_per_person" and per_person > constraint.amount_idr:
+        errors.append("max_per_person_budget_exceeded")
+    if constraint.budget_mode == "daily_cap" and any(day_total > constraint.amount_idr for day_total in daily_totals):
+        errors.append("daily_budget_cap_exceeded")
+    return errors
+
+
+def parse_idr_amount(label: str | None) -> int:
+    if not label:
+        return 0
+    digits = re.sub(r"\D", "", label)
+    return int(digits) if digits else 0
 
 
 def date_label(start: str, offset: int) -> str:

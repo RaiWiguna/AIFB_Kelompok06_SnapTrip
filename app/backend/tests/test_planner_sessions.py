@@ -65,6 +65,25 @@ def planner_payload(item_id: str):
     }
 
 
+async def create_ready_planner(client, email: str = "budget-user@example.com"):
+    user = signup(client, email)
+    session, item = await create_planner_seed(client, user["id"])
+    response = client.post(
+        f"/api/planner-sessions/from-trip-creation/{session['id']}",
+        json=planner_payload(item["id"]),
+    )
+    assert response.status_code == 201
+    return response.json()["session"]
+
+
+def daily_totals(budget: dict) -> list[int]:
+    return [sum(row["amounts"].values()) for row in budget["daily"]]
+
+
+def category_total(budget: dict) -> int:
+    return sum(int("".join(ch for ch in category["amount"] if ch.isdigit())) for category in budget["categories"])
+
+
 @pytest.mark.asyncio
 async def test_planner_session_auto_run_creates_documents_and_events(client):
     user = signup(client)
@@ -87,6 +106,97 @@ async def test_planner_session_auto_run_creates_documents_and_events(client):
     assert planner["messages"][0]["content"] == "Plan me a 3 day Pantai Kuta trip for 3 people."
     assert "run_started" in {event["type"] for event in planner["events"]}
     assert "document_committed" in {event["type"] for event in planner["events"]}
+
+
+@pytest.mark.asyncio
+async def test_fixed_total_budget_request_produces_exact_total(client):
+    created = await create_ready_planner(client, "budget-fixed-total@example.com")
+
+    response = client.post(
+        f"/api/planner-sessions/{created['id']}/messages",
+        json={"text": "budget total harus Rp 5.000.000 fix"},
+    )
+
+    assert response.status_code == 200
+    planner = response.json()["session"]
+    budget = planner["documents"]["budget_plan"]["content"]
+    assert planner["ready"] is True
+    assert budget["budget_constraint"]["budget_mode"] == "fixed_total"
+    assert budget["budget_constraint"]["amount_idr"] == 5_000_000
+    assert budget["estimated_total_idr"] == 5_000_000
+    assert budget["per_person_idr"] == round(5_000_000 / 3)
+    assert category_total(budget) == 5_000_000
+    assert sum(daily_totals(budget)) == 5_000_000
+
+
+@pytest.mark.asyncio
+async def test_max_total_budget_request_does_not_exceed_cap(client):
+    created = await create_ready_planner(client, "budget-max-total@example.com")
+
+    response = client.post(
+        f"/api/planner-sessions/{created['id']}/messages",
+        json={"text": "jangan lebih dari Rp 1.000.000"},
+    )
+
+    assert response.status_code == 200
+    budget = response.json()["session"]["documents"]["budget_plan"]["content"]
+    assert budget["budget_constraint"]["budget_mode"] == "max_total"
+    assert budget["estimated_total_idr"] <= 1_000_000
+    assert category_total(budget) == budget["estimated_total_idr"]
+    assert sum(daily_totals(budget)) == budget["estimated_total_idr"]
+
+
+@pytest.mark.asyncio
+async def test_fixed_per_person_budget_uses_traveler_count(client):
+    created = await create_ready_planner(client, "budget-fixed-person@example.com")
+
+    response = client.post(
+        f"/api/planner-sessions/{created['id']}/messages",
+        json={"text": "Rp 3 juta per orang fix"},
+    )
+
+    assert response.status_code == 200
+    budget = response.json()["session"]["documents"]["budget_plan"]["content"]
+    assert budget["budget_constraint"]["budget_mode"] == "fixed_per_person"
+    assert budget["budget_constraint"]["traveler_count"] == 3
+    assert budget["per_person_idr"] == 3_000_000
+    assert budget["estimated_total_idr"] == 9_000_000
+
+
+@pytest.mark.asyncio
+async def test_daily_budget_cap_limits_every_daily_row(client):
+    created = await create_ready_planner(client, "budget-daily-cap@example.com")
+
+    response = client.post(
+        f"/api/planner-sessions/{created['id']}/messages",
+        json={"text": "budget harian Rp 300.000"},
+    )
+
+    assert response.status_code == 200
+    budget = response.json()["session"]["documents"]["budget_plan"]["content"]
+    assert budget["budget_constraint"]["budget_mode"] == "daily_cap"
+    assert budget["budget_constraint"]["amount_idr"] == 300_000
+    assert all(total <= 300_000 for total in daily_totals(budget))
+    assert sum(daily_totals(budget)) == budget["estimated_total_idr"]
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_budget_request_preserves_documents_and_asks_clarification(client):
+    created = await create_ready_planner(client, "budget-ambiguous@example.com")
+    before = created["documents"]["budget_plan"]
+
+    response = client.post(
+        f"/api/planner-sessions/{created['id']}/messages",
+        json={"text": "budget 5 juta"},
+    )
+
+    assert response.status_code == 200
+    planner = response.json()["session"]
+    after = planner["documents"]["budget_plan"]
+    assert after["version"] == before["version"]
+    assert after["content"]["estimated_total_idr"] == before["content"]["estimated_total_idr"]
+    assert "whole trip, per person, or per day" in planner["messages"][-1]["content"]
+    assert planner["ready"] is True
 
 
 @pytest.mark.asyncio

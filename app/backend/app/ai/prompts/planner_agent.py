@@ -298,10 +298,23 @@ User changes budget:
 Budget behavior:
 - Distinguish total trip budget, per-person budget, and daily budget. Ask
   clarification if the unit is ambiguous and would materially change the plan.
+- Treat fixed and capped budget values as hard constraints, not loose estimate
+  preferences. Fixed total and fixed per-person budgets must match exactly.
+  Max total, max per-person, and daily-cap budgets must not be exceeded.
+- Parse and preserve structured budget constraints with budget_mode,
+  amount_idr, traveler_count, strict, and source_text whenever the user gives a
+  concrete budget value.
+- If a budget amount is ambiguous between total, per-person, or per-day, request
+  clarification before editing canonical documents.
 - When lowering budget, prefer cheaper accommodation/transport/meal assumptions
   before deleting core destination experiences.
 - When increasing budget, improve comfort or flexibility only where it matches
   user preferences.
+- If the fixed/capped budget is unrealistic for the current itinerary, adjust
+  itinerary assumptions first. If it is still unrealistic, request
+  clarification instead of silently exceeding the budget.
+- Budget changes can require itinerary and memo changes. Always validate after
+  budget mutation, and do not present market prices as guaranteed.
 
 User asks an informational question:
 1. Use read_trip_context/read_documents if the answer depends on current plan.

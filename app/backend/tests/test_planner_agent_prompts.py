@@ -75,6 +75,10 @@ def test_planner_support_prompts_cover_context_repair_research_and_flow():
     assert "User adds a destination" in PLANNER_ACTION_SELECTION_V1
     assert "Duration/date behavior" in PLANNER_ACTION_SELECTION_V1
     assert "Budget behavior" in PLANNER_ACTION_SELECTION_V1
+    assert "hard constraints" in PLANNER_ACTION_SELECTION_V1
+    assert "Fixed total and fixed per-person budgets must match exactly" in PLANNER_ACTION_SELECTION_V1
+    assert "Max total, max per-person, and daily-cap budgets must not be exceeded" in PLANNER_ACTION_SELECTION_V1
+    assert "budget_mode" in PLANNER_ACTION_SELECTION_V1
     assert "Preference-only changes" in PLANNER_ACTION_SELECTION_V1
     assert "Review-readiness request" in PLANNER_ACTION_SELECTION_V1
     assert "Unsupported action" in PLANNER_ACTION_SELECTION_V1
