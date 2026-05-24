@@ -4,8 +4,8 @@
 | --- | --- |
 | Document status | Active handoff |
 | Last updated | 2026-05-24 |
-| Branch | `feat/phase-11-image-classification` |
-| Purpose | Resume point after the real image-classification slice |
+| Branch | `feat/flow2-places-two-step-gemini` |
+| Purpose | Resume point after Flow 2 Places-ID grounding and two-step Gemini refactor |
 
 ## 1. Completed This Session
 
@@ -123,6 +123,15 @@
   - validated JPG/PNG bytes before GridFS persistence and enforced the maximum of 8 images across the full trip creation session,
   - preserved existing classify/session/confirm API shapes while guaranteeing all four canonical confidences per image and averaged aggregate confidences,
   - updated the category confirmation UI so per-image cards show all label confidences and the default selected category is the highest averaged label.
+- Refactored Flow 2 recommendations into Places-ID grounding plus two-step Gemini:
+  - expanded destination seeds to exactly 10 per canonical category, each with a verified Google Places place ID,
+  - added `app/backend/tools/places_seed_grounding.py` for read-only Text Search/details/audit checks,
+  - changed Places enrichment to use Place Details by ID first and Text Search fallback only when needed,
+  - expanded normalized Places context with rating count, editorial/generative summaries, website, reviews, types, primary type display name, photos, Google Maps URI, and regular/current opening hours,
+  - split Gemini recommendation behavior into `destination_seed_selection.v1`, `destination_card_finalization.v1`, and persisted `destination_recommendation.v2`,
+  - switched default Gemini model examples to `gemini-3.5-flash`,
+  - extended recommendation cards with description, review summary, normalized address/opening hours, rating, Maps/Website links, primary type label, and top photo,
+  - updated Flow 2 PRD/roadmap/ADR documentation for the new provider boundary.
 
 ## 2. Current Repo Facts
 
@@ -265,12 +274,25 @@ Verification after real image-classification slice:
 - `npm run test:e2e` passed: 8 Playwright tests including upload, classification, category confirmation, recommendation selection, and planner preview.
 - `docker info` failed because the Docker Desktop Linux engine was not running, so optional local and remote image builds were not run.
 
+Verification after Flow 2 Places-ID/two-step Gemini refactor:
+
+- `npm run lint` passed; backend Ruff passed and frontend reported 3 existing warnings / 0 errors.
+- `npm run typecheck` passed.
+- `npm test` passed: backend 49 passed / 1 skipped, frontend 13 tests, Playwright 8 tests.
+- `npm run build` passed.
+- `npm run docker:config` passed and confirmed remote production runtime uses `GEMINI_MODEL=gemini-3.5-flash`.
+- `git diff --check` passed; Git reported only Windows line-ending normalization warnings.
+- `cd app/backend; uv run python tools/places_seed_grounding.py --help` passed.
+- `docker info` failed because the Docker Desktop Linux engine was not running, so CI compose image build steps could not be run locally.
+
 ## 4. Known Caveats
 
 - Mongo runtime integration is implemented at the store level, but the current automated tests use the in-memory store. Future Phase 6 work should add testcontainers MongoDB/GridFS coverage.
 - Mongo image binary writes now use Motor GridFS bucket APIs. Initial testcontainers coverage exists, but it skipped locally because Docker Desktop was not running.
 - The real MobileNetV4 Medium classifier path is implemented for CPU inference. Mock mode remains the supported local/test default unless `CLASSIFIER_MODE=real` is explicitly configured.
 - Google Places and Gemini provider calls are disabled by default in local/test env. Tests use mocked or deterministic provider behavior.
+- Flow 2 now expects seed Place IDs to be the primary Places lookup key; Text Search is fallback for failed seed IDs and the required grounding path for Gemini-selected non-seed places.
+- `primaryTypeDisplayName` is treated as a place type/badge in UI; card titles use Places `displayName`.
 - Some frontend routes and components still use mock data modules by design for static marketing imagery, landing-page examples, invite demo boundaries, and explicit Phase 11 placeholders.
 - Google Maps frontend rendering is implemented behind `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`; CI/local test defaults still pass without a Maps key by using the static fallback map.
 - The planner preview endpoint requires selected recommendations and intentionally returns `422` before destination selection.

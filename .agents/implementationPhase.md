@@ -223,10 +223,12 @@ Execution list:
 - Implement Google Places provider with httpx.
 - Normalize Places data.
 - Cache/persist PlaceEnrichment.
-- Select destination candidates by confirmed categories.
-- Implement Gemini recommendation adapter.
-- Validate structured recommendation output.
-- Retry once on invalid JSON.
+- Maintain exactly 10 curated, Places-grounded seeds per canonical category.
+- Select destination candidates through a two-step Gemini flow:
+  - Gemini 1 chooses two seed picks and two non-seed "you may also like" picks from seed/classifier/image context.
+  - Places grounds non-seed picks through Text Search and all picks through Place Details by place ID.
+  - Gemini 2 normalizes card copy, review summary, address, and opening hours from Places facts.
+- Validate both structured Gemini outputs and semantic references.
 - Fallback deterministically when provider output fails.
 - Implement recommendation and place endpoints.
 

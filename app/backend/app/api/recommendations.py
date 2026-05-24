@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.api.deps import get_settings_from_app, get_store, require_user
 from app.services.recommendations import RecommendationService
@@ -20,11 +21,36 @@ async def get_recommendation_run(
 
 
 @router.get("/place-photos/{photo_id}")
-async def get_place_photo_descriptor(photo_id: str, store=Depends(get_store), user=Depends(require_user)):
+async def get_place_photo_descriptor(
+    photo_id: str,
+    store=Depends(get_store),
+    settings=Depends(get_settings_from_app),
+    user=Depends(require_user),
+):
     enrichments = await store.list_docs("placeEnrichments")
     for enrichment in enrichments:
         for photo in enrichment.get("photo_snaps", []):
             if photo.get("photo_id") == photo_id:
+                provider_photo_name = photo.get("provider_photo_name")
+                if settings.use_google_places and settings.google_places_api_key and provider_photo_name:
+                    try:
+                        async with httpx.AsyncClient(timeout=httpx.Timeout(settings.ai_provider_timeout_seconds)) as client:
+                            media = await client.get(
+                                f"https://places.googleapis.com/v1/{provider_photo_name}/media",
+                                params={
+                                    "maxWidthPx": 1200,
+                                    "maxHeightPx": 900,
+                                    "key": settings.google_places_api_key,
+                                },
+                                follow_redirects=True,
+                            )
+                            media.raise_for_status()
+                            return Response(
+                                content=media.content,
+                                media_type=media.headers.get("content-type") or "image/jpeg",
+                            )
+                    except httpx.HTTPError as exc:
+                        raise HTTPException(status_code=502, detail="Place photo could not be fetched") from exc
                 return {
                     "photo": {
                         "id": photo_id,

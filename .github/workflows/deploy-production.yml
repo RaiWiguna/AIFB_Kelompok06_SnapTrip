@@ -140,7 +140,7 @@ jobs:
             printf '%s\n' "CLASSIFIER_MODE=real"
             printf '%s\n' "CLASSIFIER_MODEL_VERSION=2026-05-mvp-mobilenetv4-medium-v2"
             printf '%s\n' "GEMINI_API_KEY=$PRODUCTION_GEMINI_API_KEY"
-            printf '%s\n' "GEMINI_MODEL=gemini-3-flash-preview"
+            printf '%s\n' "GEMINI_MODEL=gemini-3.5-flash"
             printf '%s\n' "GOOGLE_PLACES_API_KEY=$PRODUCTION_GOOGLE_PLACES_API_KEY"
             printf '%s\n' "NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY=$PRODUCTION_GOOGLE_MAPS_BROWSER_API_KEY"
             printf '%s\n' "AI_PROVIDER_TIMEOUT_SECONDS=30"

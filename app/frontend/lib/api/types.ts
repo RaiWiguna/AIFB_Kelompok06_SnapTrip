@@ -177,10 +177,19 @@ export type BackendRecommendationItem = {
   short_summary: string
   description: string
   match_reason: string
+  review_summary?: string | null
   opening_hours_summary: { status: string; summary: string }
   estimated_cost: { amount_idr?: number | null; label: string; is_estimate: boolean }
   location: { address?: string | null; lat?: number | null; lng?: number | null; google_maps_uri?: string | null }
-  image_snaps: { photo_id: string; url?: string | null; attribution?: string | null }[]
+  image_snaps: { photo_id: string; url?: string | null; attribution?: string | null; width_px?: number | null; height_px?: number | null }[]
+  photo?: { photo_id: string; url?: string | null; attribution?: string | null; width_px?: number | null; height_px?: number | null } | null
+  rating?: number | null
+  user_rating_count?: number | null
+  website_uri?: string | null
+  google_maps_uri?: string | null
+  primary_type_display_name?: string | null
+  normalized_address?: string | null
+  normalized_opening_hours?: string | null
   warnings: { code: string; message: string }[]
   source_notes: { source: string; note: string }[]
   confidence: "high" | "medium" | "low"
@@ -193,16 +202,21 @@ export type RecommendationCardDisplay = {
   category: string
   subCategory: string
   cover: string
-  estTime: string
+  description: string
   estBudget: string
   region: string
   reason: string
+  reviewSummary?: string | null
   hours?: string
   estimateNote?: string
   address?: string | null
   lat?: number | null
   lng?: number | null
   googleMapsUri?: string | null
+  websiteUri?: string | null
+  rating?: number | null
+  userRatingCount?: number | null
+  primaryTypeDisplayName?: string | null
   placeEnrichmentId?: string | null
   selected: boolean
 }
