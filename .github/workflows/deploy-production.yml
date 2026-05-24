@@ -1,6 +1,9 @@
 name: Deploy Production
 
 on:
+  push:
+    branches:
+      - dev
   workflow_run:
     workflows: ["CI"]
     types:
@@ -20,17 +23,78 @@ permissions:
   contents: read
 
 jobs:
+  validate:
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.git_ref || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run typecheck
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+      - name: Run production build
+        run: npm run build
+
+      - name: Validate local Compose config
+        run: docker compose config
+
+      - name: Build local Compose images
+        run: docker compose build
+
+      - name: Validate remote Compose config
+        run: docker compose --env-file deploy/env/runtime.production.env.example -f deploy/compose/docker-compose.remote.yml config
+
+      - name: Build remote Compose images
+        run: docker compose --env-file deploy/env/runtime.production.env.example -f deploy/compose/docker-compose.remote.yml build
+
   deploy:
+    needs: validate
     if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       contains(fromJSON('["main", "dev"]'), github.event.workflow_run.head_branch))
+      always() &&
+      ((github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main') ||
+       ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+        needs.validate.result == 'success'))
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 75
     env:
       APP_ENV: production
-      DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.git_ref || github.event.workflow_run.head_sha }}
+      DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.git_ref || github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
       REMOTE_BASE_DIR: /opt/snaptrip/hosted
       REMOTE_RUNTIME_ENV: /opt/snaptrip/hosted/shared/runtime.env
       REMOTE_HOST: ${{ secrets.PRODUCTION_VM_HOST }}
