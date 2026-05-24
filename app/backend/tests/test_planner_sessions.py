@@ -1,6 +1,9 @@
 import pytest
 from conftest import signup
 
+from app.schemas.planner import PlannerAgentStepV1, PlannerStartRequest
+from app.services.planner import PlannerService
+
 
 async def create_planner_seed(
     client,
@@ -294,6 +297,65 @@ async def test_duration_change_reconciles_itinerary_dates_and_does_not_append_pl
     assert repeated.status_code == 200
     repeated_days = repeated.json()["session"]["documents"]["full_itinerary"]["content"]["days"]
     assert [day["day"] for day in repeated_days] == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_research_then_partial_gemini_itinerary_write_completes_missing_documents_and_uses_route_variety(client):
+    class PartialItineraryProvider:
+        enabled = True
+        calls = 0
+
+        async def decide(self, context, trace_context=None):
+            self.calls += 1
+            if self.calls == 1:
+                return PlannerAgentStepV1(
+                    intent="initial_plan",
+                    assistant_text="I am looking up Pantai Tanjung Tinggi and nearby attractions.",
+                    actions=[{"tool": "places_text_search", "args": {"query": "Pantai Tanjung Tinggi Belitung"}}],
+                )
+            return PlannerAgentStepV1(
+                intent="initial_plan",
+                requires_document_edit=True,
+                affected_documents=["full_itinerary"],
+                assistant_text="I created the itinerary and will set up the budget and memo next.",
+                actions=[{"tool": "replace_full_itinerary", "args": {}}],
+            )
+
+    user = signup(client, "planner-partial-gemini@example.com")
+    session, item = await create_planner_seed(
+        client,
+        user["id"],
+        name="Pantai Tanjung Tinggi",
+        region="Pantai Tj. Tinggi, Kepulauan Bangka Belitung",
+        categories=["pantai"],
+    )
+    service = PlannerService(
+        store=client.app.state.store,
+        settings=client.app.state.settings,
+        planner_provider=PartialItineraryProvider(),
+    )
+
+    planner = (
+        await service.create_from_trip_creation(
+            session["id"],
+            user,
+            PlannerStartRequest(**planner_payload_for_duration(item["id"], 3, traveler_count=2)),
+        )
+    )["session"]
+
+    assert planner["ready"] is True
+    assert planner["documents"]["trip_memo"]["valid"] is True
+    assert planner["documents"]["budget_plan"]["valid"] is True
+    titles = [day["title"] for day in planner["documents"]["full_itinerary"]["content"]["days"]]
+    assert titles == ["Pantai Tanjung Tinggi", "Pulau Lengkuas", "Danau Kaolin Belitung"]
+    assert len(set(titles)) == 3
+    assert {event["label"] for event in planner["events"] if event["type"] == "turn_started"} >= {
+        "Reasoning turn 1",
+        "Reasoning turn 2",
+    }
+    assert planner["messages"][-1]["content"] == (
+        "I completed the missing planner documents and validated the trip memo, itinerary, and budget plan."
+    )
 
 
 @pytest.mark.asyncio

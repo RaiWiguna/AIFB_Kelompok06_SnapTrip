@@ -50,6 +50,15 @@ BUDGET_LABELS = {
     "activities": "Activities & Tickets",
     "other": "Other",
 }
+MUTATING_PLANNER_TOOLS = {
+    "replace_trip_memo",
+    "replace_full_itinerary",
+    "replace_budget_plan",
+    "patch_itinerary_day",
+    "patch_budget_category",
+    "patch_memo_section",
+}
+TERMINAL_PLANNER_TOOLS = {"finish_response", "request_clarification"}
 
 
 def now() -> datetime:
@@ -343,7 +352,24 @@ class PlannerService:
                     if tool_count > MAX_TOOL_CALLS:
                         break
                     await self._execute_tool(session["id"], run["id"], action)
-                await self._assistant_response(session["id"], run["id"], step.assistant_text or self._summary_response(actions))
+                completion_actions = await self._completion_actions(session["id"], step)
+                for action in completion_actions:
+                    tool_count += 1
+                    if tool_count > MAX_TOOL_CALLS:
+                        break
+                    await self._execute_tool(session["id"], run["id"], action)
+                all_actions = [*actions, *completion_actions]
+                response_text = (
+                    "I completed the missing planner documents and validated the trip memo, itinerary, and budget plan."
+                    if completion_actions
+                    else step.assistant_text or self._summary_response(actions)
+                )
+                has_mutation = any(action["tool"] in MUTATING_PLANNER_TOOLS for action in all_actions)
+                has_terminal_tool = any(action["tool"] in TERMINAL_PLANNER_TOOLS for action in all_actions)
+                if not has_mutation and not has_terminal_tool and not step.stop and not step.needs_user_input:
+                    if turn_count < MAX_AGENT_TURNS and tool_count < MAX_TOOL_CALLS:
+                        continue
+                await self._assistant_response(session["id"], run["id"], response_text)
                 break
             documents = await self._latest_documents(session["id"])
             session = await self.store.find_one("plannerSessions", id=session["id"]) or session
@@ -613,7 +639,9 @@ class PlannerService:
 
     async def _replace_full_itinerary(self, planner_session_id: str, run_id: str) -> dict[str, Any]:
         context = await self._read_trip_context(planner_session_id)
-        days = synthesize_itinerary(expand_destinations_for_duration(context["destinations"], context["session"]["duration_days"]))
+        days = synthesize_itinerary(
+            await self._route_destinations(planner_session_id, context["session"]["duration_days"], "")
+        )
         for idx, day in enumerate(days, start=0):
             day["dateLabel"] = date_label(context["session"]["travel_start_date"], idx)
         document = FullItineraryDocumentV1.model_validate({"days": days}).model_dump(by_alias=True)
@@ -622,7 +650,7 @@ class PlannerService:
     async def _replace_budget_plan(self, planner_session_id: str, run_id: str) -> dict[str, Any]:
         context = await self._read_trip_context(planner_session_id)
         items = [context["recommendation_item"]] if context.get("recommendation_item") else []
-        destinations = expand_destinations_for_duration(context["destinations"], context["session"]["duration_days"])
+        destinations = await self._route_destinations(planner_session_id, context["session"]["duration_days"], "")
         total = estimate_total_idr(items, context["session"]["duration_days"], context["session"]["traveler_count"])
         plan = {**context["plan"], "estimated_budget_idr": total}
         categories = synthesize_budget_categories(plan, items, destinations)
@@ -788,6 +816,31 @@ class PlannerService:
             "per_person_idr": budget.get("per_person_idr"),
             "category_count": len(budget.get("categories") or []),
         }
+
+    async def _completion_actions(self, planner_session_id: str, step: PlannerAgentStepV1) -> list[dict[str, Any]]:
+        has_mutation = step.requires_document_edit or any(action.tool in MUTATING_PLANNER_TOOLS for action in step.actions)
+        if not has_mutation:
+            return []
+        session = await self.store.find_one("plannerSessions", id=planner_session_id)
+        documents = await self._latest_documents(planner_session_id)
+        validation = validate_document_set(
+            documents,
+            expected_duration_days=int((session or {}).get("duration_days") or 0) or None,
+        )
+        if validation["valid"]:
+            return []
+        actions: list[dict[str, Any]] = []
+        missing_or_invalid = set(validation["missing"]) | set(validation["invalid"])
+        if "full_itinerary" in missing_or_invalid:
+            actions.append({"tool": "replace_full_itinerary", "args": {}})
+        if "budget_plan" in missing_or_invalid:
+            actions.append({"tool": "replace_budget_plan", "args": {}})
+            actions.append({"tool": "compute_budget_summary", "args": {}})
+        if "trip_memo" in missing_or_invalid:
+            actions.append({"tool": "replace_trip_memo", "args": {}})
+        if actions:
+            actions.append({"tool": "validate_documents", "args": {}})
+        return actions
 
     async def _update_duration(self, planner_session_id: str, days: int) -> dict[str, Any]:
         session = await self.store.find_one("plannerSessions", id=planner_session_id)
@@ -1289,7 +1342,25 @@ def alternative_destinations(
 ) -> list[dict[str, Any]]:
     region = (base.get("region") or (recommendation_item or {}).get("region") or "Indonesia").split(",")[0]
     base_name = base.get("name") or "Selected destination"
-    if "gede" in base_name.lower() or "west java" in region.lower() or "jawa barat" in region.lower():
+    if (
+        "tanjung tinggi" in base_name.lower()
+        or "belitung" in base_name.lower()
+        or "belitung" in region.lower()
+        or "bangka belitung" in region.lower()
+    ):
+        names = [
+            "Pulau Lengkuas",
+            "Danau Kaolin Belitung",
+            "Pantai Tanjung Kelayang",
+            "Museum Kata Andrea Hirata",
+        ]
+        blurbs = [
+            "An island-hopping anchor with a lighthouse, clear water, and granite-island scenery near Belitung.",
+            "A bright blue former kaolin mining lake that adds a different landscape before departure.",
+            "A practical beach base for boat departures and another granite-coast sunset stop.",
+            "A cultural stop in East Belitung that balances beach days with local literary context.",
+        ]
+    elif "gede" in base_name.lower() or "west java" in region.lower() or "jawa barat" in region.lower():
         names = [
             "Cibodas Botanical Garden",
             "Curug Cibeureum",
