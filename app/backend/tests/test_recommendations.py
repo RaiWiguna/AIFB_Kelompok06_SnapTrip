@@ -103,6 +103,110 @@ def test_recommendation_requires_confirmed_categories(client):
 
 
 @pytest.mark.asyncio
+async def test_place_photo_proxy_uses_header_api_key(client, monkeypatch):
+    signup(client)
+    settings = client.app.state.settings
+    settings.use_google_places = True
+    settings.google_places_api_key = "places-secret"
+    captured = {}
+
+    await client.app.state.store.save_doc(
+        "placeEnrichments",
+        {
+            "id": "plc_photo_proxy",
+            "photo_snaps": [
+                {
+                    "photo_id": "pho_proxy",
+                    "provider_photo_name": "places/place-1/photos/photo-1",
+                    "attribution": "Google User",
+                }
+            ],
+        },
+    )
+
+    class FakePhotoClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url, headers, params, follow_redirects):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["params"] = params
+            captured["follow_redirects"] = follow_redirects
+            request = httpx.Request("GET", url, headers=headers, params=params)
+            return httpx.Response(
+                200,
+                request=request,
+                content=b"image-bytes",
+                headers={"content-type": "image/jpeg"},
+            )
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakePhotoClient)
+
+    response = client.get("/api/place-photos/pho_proxy")
+
+    assert response.status_code == 200
+    assert response.content == b"image-bytes"
+    assert captured["headers"] == {"X-Goog-Api-Key": "places-secret"}
+    assert "key" not in captured["params"]
+    assert "places-secret" not in captured["url"]
+    assert captured["url"] == "https://places.googleapis.com/v1/places/place-1/photos/photo-1/media"
+    assert captured["follow_redirects"] is True
+
+
+@pytest.mark.asyncio
+async def test_place_photo_proxy_rejects_malformed_provider_photo_name(client, monkeypatch):
+    signup(client)
+    settings = client.app.state.settings
+    settings.use_google_places = True
+    settings.google_places_api_key = "places-secret"
+
+    await client.app.state.store.save_doc(
+        "placeEnrichments",
+        {
+            "id": "plc_photo_malformed",
+            "photo_snaps": [
+                {
+                    "photo_id": "pho_malformed",
+                    "provider_photo_name": "https://evil.test/photos/photo-1",
+                    "attribution": "Google User",
+                    "width_px": 800,
+                }
+            ],
+        },
+    )
+
+    class FailingPhotoClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            raise AssertionError("malformed provider photo name should not be fetched")
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(httpx, "AsyncClient", FailingPhotoClient)
+
+    response = client.get("/api/place-photos/pho_malformed")
+
+    assert response.status_code == 200
+    assert response.json()["photo"] == {
+        "id": "pho_malformed",
+        "provider": "google_places",
+        "attribution": "Google User",
+        "width_px": 800,
+        "height_px": None,
+    }
+
+
+@pytest.mark.asyncio
 async def test_service_sends_grounded_context_to_gemini_and_persists_output(client):
     user = signup(client)
     session_id = client.post("/api/trip-creation-sessions", json={"source": "upload"}).json()[
