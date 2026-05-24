@@ -57,7 +57,7 @@ The dual locking strategy addresses two race classes: GitHub Actions prevents ov
 
 - Production deployment depends on Docker build success on the VM.
 - Failed post-deploy validation rolls back only when a previous release exists.
-- `CLASSIFIER_MODE=mock` remains the first-deploy default until a trained model artifact is promoted.
+- `CLASSIFIER_MODE=real` is now the production default after the MobileNetV4 Medium v2 artifact promotion recorded in ADR 0011.
 - Real planner chat, accepted document persistence, invites, and participants remain out of scope until after this deployment foundation.
 
 ## Verification

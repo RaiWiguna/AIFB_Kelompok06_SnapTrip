@@ -1,4 +1,16 @@
+from io import BytesIO
+
 from conftest import signup
+from PIL import Image
+
+import app.api.trip_creation as trip_creation_module
+from app.services.classifier import InvalidClassifierImageError
+
+
+def image_bytes(format: str = "JPEG") -> bytes:
+    buffer = BytesIO()
+    Image.new("RGB", (32, 32), color=(24, 96, 128)).save(buffer, format=format)
+    return buffer.getvalue()
 
 
 def test_categories_endpoint(client):
@@ -17,8 +29,8 @@ def test_upload_classify_confirm_and_seeds(client):
     upload = client.post(
         f"/api/trip-creation-sessions/{session_id}/images",
         files=[
-            ("files", ("a.jpg", b"fake-jpg-data", "image/jpeg")),
-            ("files", ("b.png", b"fake-png-data", "image/png")),
+            ("files", ("a.jpg", image_bytes("JPEG"), "image/jpeg")),
+            ("files", ("b.png", image_bytes("PNG"), "image/png")),
         ],
     )
     assert upload.status_code == 200
@@ -51,12 +63,56 @@ def test_upload_classify_confirm_and_seeds(client):
     assert seeds.json()["seeds"]
 
 
+def test_classify_maps_invalid_classifier_image_to_422(client, monkeypatch):
+    class InvalidBytesClassifier:
+        async def predict(self, images):
+            raise InvalidClassifierImageError("synthetic decode failure")
+
+    signup(client)
+    session_id = client.post("/api/trip-creation-sessions", json={"source": "upload"}).json()["session"]["id"]
+    client.post(
+        f"/api/trip-creation-sessions/{session_id}/images",
+        files=[("files", ("a.jpg", image_bytes("JPEG"), "image/jpeg"))],
+    )
+    monkeypatch.setattr(trip_creation_module, "get_classifier", lambda settings: InvalidBytesClassifier())
+
+    response = client.post(f"/api/trip-creation-sessions/{session_id}/classify")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["message"] == "Image file is invalid or corrupted"
+
+
+def test_classify_maps_unknown_classifier_category_to_503(client, monkeypatch):
+    class UnknownCategoryClassifier:
+        async def predict(self, images):
+            return [
+                {
+                    "image_id": images[0]["id"],
+                    "top_category": "museum",
+                    "predictions": [{"category": "museum", "confidence": 1.0}],
+                }
+            ]
+
+    signup(client)
+    session_id = client.post("/api/trip-creation-sessions", json={"source": "upload"}).json()["session"]["id"]
+    client.post(
+        f"/api/trip-creation-sessions/{session_id}/images",
+        files=[("files", ("a.jpg", image_bytes("JPEG"), "image/jpeg"))],
+    )
+    monkeypatch.setattr(trip_creation_module, "get_classifier", lambda settings: UnknownCategoryClassifier())
+
+    response = client.post(f"/api/trip-creation-sessions/{session_id}/classify")
+
+    assert response.status_code == 503
+    assert response.json()["error"]["message"] == "Image classification is unavailable"
+
+
 def test_session_recovery_returns_images_classification_and_selected_recommendations(client):
     signup(client)
     session_id = client.post("/api/trip-creation-sessions", json={"source": "upload"}).json()["session"]["id"]
     client.post(
         f"/api/trip-creation-sessions/{session_id}/images",
-        files=[("files", ("a.jpg", b"fake-jpg-data", "image/jpeg"))],
+        files=[("files", ("a.jpg", image_bytes("JPEG"), "image/jpeg"))],
     )
     client.post(f"/api/trip-creation-sessions/{session_id}/classify")
     client.post(
@@ -147,3 +203,37 @@ def test_upload_rejects_invalid_type(client):
         files=[("files", ("bad.txt", b"not-image", "text/plain"))],
     )
     assert upload.status_code == 422
+
+
+def test_upload_rejects_corrupt_image_bytes(client):
+    signup(client)
+    session_id = client.post("/api/trip-creation-sessions", json={"source": "upload"}).json()[
+        "session"
+    ]["id"]
+    upload = client.post(
+        f"/api/trip-creation-sessions/{session_id}/images",
+        files=[("files", ("bad.jpg", b"not-an-image", "image/jpeg"))],
+    )
+    assert upload.status_code == 422
+
+
+def test_upload_rejects_more_than_eight_images_across_session(client):
+    signup(client)
+    session_id = client.post("/api/trip-creation-sessions", json={"source": "upload"}).json()[
+        "session"
+    ]["id"]
+
+    first_upload = client.post(
+        f"/api/trip-creation-sessions/{session_id}/images",
+        files=[
+            ("files", (f"{index}.png", image_bytes("PNG"), "image/png"))
+            for index in range(8)
+        ],
+    )
+    second_upload = client.post(
+        f"/api/trip-creation-sessions/{session_id}/images",
+        files=[("files", ("extra.png", image_bytes("PNG"), "image/png"))],
+    )
+
+    assert first_upload.status_code == 200
+    assert second_upload.status_code == 422

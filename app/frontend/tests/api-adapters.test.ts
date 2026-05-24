@@ -6,7 +6,11 @@ import { apiAssetUrl, ApiError } from "../lib/api/client"
 import { adaptTripCard, formatIdr } from "../lib/api/adapters/trips"
 import { adaptTripDetail } from "../lib/api/adapters/trip-detail"
 import { adaptPlannerPreview } from "../lib/api/adapters/planner-preview"
-import { adaptRecommendationItem, adaptTripCreationSession } from "../lib/api/adapters/trip-creation"
+import {
+  adaptRecommendationItem,
+  adaptTripCreationSession,
+  defaultConfirmedCategories,
+} from "../lib/api/adapters/trip-creation"
 import { TripRouteMap } from "../components/trip-route-map"
 import { PlannerWorkspace } from "../components/planner/planner-workspace"
 import { ReviewPanel } from "../components/planner/review-panel"
@@ -89,10 +93,20 @@ describe("frontend API adapters", () => {
           {
             image_id: "img_1",
             top_category: "pantai",
-            predictions: [{ category: "pantai", confidence: 0.92 }],
+            predictions: [
+              { category: "pantai", confidence: 0.92 },
+              { category: "gunung", confidence: 0.04 },
+              { category: "air_terjun", confidence: 0.03 },
+              { category: "wisata_tradisional", confidence: 0.01 },
+            ],
           },
         ],
-        aggregated: [{ category: "pantai", confidence: 0.92 }],
+        aggregated: [
+          { category: "pantai", confidence: 0.92 },
+          { category: "gunung", confidence: 0.04 },
+          { category: "air_terjun", confidence: 0.03 },
+          { category: "wisata_tradisional", confidence: 0.01 },
+        ],
       },
       latest_recommendations: null,
     })
@@ -103,6 +117,15 @@ describe("frontend API adapters", () => {
       topLabel: "Pantai",
       confidenceLabel: "92%",
     })
+    expect(session.classification?.perImage[0].scores).toEqual([
+      { id: "pantai", label: "Pantai", value: 92 },
+      { id: "gunung", label: "Gunung", value: 4 },
+      { id: "air_terjun", label: "Air Terjun", value: 3 },
+      { id: "wisata_tradisional", label: "Wisata Tradisional", value: 1 },
+    ])
+    expect(session.classification?.scores[0]).toEqual({ id: "pantai", label: "Pantai", value: 92 })
+    expect(defaultConfirmedCategories([], session.classification)).toEqual(["pantai"])
+    expect(defaultConfirmedCategories(["gunung"], session.classification)).toEqual(["gunung"])
   })
 
   it("adapts recommendation cards with warning text and selected state", () => {

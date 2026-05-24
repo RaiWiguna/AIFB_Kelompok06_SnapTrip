@@ -1,16 +1,31 @@
+from io import BytesIO
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from PIL import Image, UnidentifiedImageError
 
 from app.api.deps import get_settings_from_app, get_store, require_user
 from app.core.categories import validate_categories
 from app.core.ids import new_id
 from app.schemas.api import ConfirmCategoriesRequest, TripCreationSessionCreateRequest
 from app.schemas.recommendations import SelectedRecommendationsRequest
-from app.services.classifier import aggregate_predictions, get_classifier
+from app.services.classifier import (
+    ClassifierError,
+    InvalidClassifierImageError,
+    aggregate_predictions,
+    get_classifier,
+)
 from app.services.recommendations import RecommendationService
 
 router = APIRouter()
+
+
+def validate_image_bytes(data: bytes) -> None:
+    try:
+        with Image.open(BytesIO(data)) as image:
+            image.verify()
+    except (SyntaxError, UnidentifiedImageError, OSError) as exc:
+        raise HTTPException(status_code=422, detail="Image file is invalid or corrupted") from exc
 
 
 async def get_owned_session(session_id: str, store, user):
@@ -134,6 +149,16 @@ async def upload_images(
     session = await get_owned_session(session_id, store, user)
     if len(files) < 1 or len(files) > settings.max_upload_images:
         raise HTTPException(status_code=422, detail=f"Upload between 1 and {settings.max_upload_images} images")
+    total_images = (
+        len(session.get("image_ids", []))
+        + len(session.get("source_image_refs", []))
+        + len(files)
+    )
+    if total_images > settings.max_upload_images:
+        raise HTTPException(
+            status_code=422,
+            detail=f"A trip creation session can use at most {settings.max_upload_images} images",
+        )
     uploaded = []
     for file in files:
         if file.content_type not in {"image/jpeg", "image/png"}:
@@ -141,6 +166,7 @@ async def upload_images(
         data = await file.read()
         if len(data) > settings.max_upload_image_bytes:
             raise HTTPException(status_code=413, detail="Image is too large")
+        validate_image_bytes(data)
         uploaded.append(await store.save_image(user["id"], file, data))
     image_ids = [*session.get("image_ids", []), *[image["id"] for image in uploaded]]
     updated = await store.update_doc(
@@ -197,6 +223,9 @@ async def classify_session(
     for image_id in session.get("image_ids", []):
         image = await store.find_one("uploadedImages", id=image_id)
         if image:
+            image_bytes = await store.get_image_bytes(image_id)
+            if image_bytes:
+                image["bytes"] = image_bytes
             images.append(image)
     for ref in session.get("source_image_refs", []):
         image_id = ref.get("image_id")
@@ -204,12 +233,20 @@ async def classify_session(
             continue
         image = await store.find_one("uploadedImages", id=image_id)
         if image:
+            image_bytes = await store.get_image_bytes(image_id)
+            if image_bytes:
+                image["bytes"] = image_bytes
             images.append(image)
     if not images:
         raise HTTPException(status_code=422, detail="At least one uploaded image is required")
     classifier = get_classifier(settings)
-    per_image = await classifier.predict(images)
-    aggregated = aggregate_predictions(per_image)
+    try:
+        per_image = await classifier.predict(images)
+        aggregated = aggregate_predictions(per_image)
+    except InvalidClassifierImageError as exc:
+        raise HTTPException(status_code=422, detail="Image file is invalid or corrupted") from exc
+    except ClassifierError as exc:
+        raise HTTPException(status_code=503, detail="Image classification is unavailable") from exc
     result = await store.save_doc(
         "classificationResults",
         {

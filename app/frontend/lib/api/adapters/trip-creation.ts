@@ -60,6 +60,11 @@ export function adaptClassification(
         topLabel: CATEGORY_LABEL[item.top_category],
         confidence,
         confidenceLabel: `${confidence}%`,
+        scores: item.predictions.map((prediction) => ({
+          id: prediction.category,
+          label: CATEGORY_LABEL[prediction.category],
+          value: percent(prediction.confidence),
+        })),
       }
     }),
     scores: classification.aggregated.map((item) => ({
@@ -131,4 +136,12 @@ export function adaptTripCreationSession(session: BackendTripCreationSession): T
         }
       : null,
   }
+}
+
+export function defaultConfirmedCategories(
+  confirmedCategories: CategoryId[],
+  classification: ClassificationDisplay | null | undefined,
+): CategoryId[] {
+  if (confirmedCategories.length) return confirmedCategories
+  return classification?.scores.slice(0, 1).map((score) => score.id) || []
 }

@@ -51,8 +51,7 @@ export const pngUpload = {
   name: "snaptrip-e2e.png",
   mimeType: "image/png",
   buffer: Buffer.from(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/l4m2NwAAAABJRU5ErkJggg==",
+    "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAFElEQVR4nGPUqtjCgA0wYRUdtBIADxEBZs4sWUEAAAAASUVORK5CYII=",
     "base64",
   ),
 };
-

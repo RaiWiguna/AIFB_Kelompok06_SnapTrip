@@ -8,6 +8,7 @@ import { AppFooter } from "@/components/app-footer"
 import { CategoryIcon } from "@/components/category-icon"
 import { StepIndicator, NEW_TRIP_STEPS } from "@/components/step-indicator"
 import { ApiError } from "@/lib/api/client"
+import { defaultConfirmedCategories } from "@/lib/api/adapters/trip-creation"
 import { getTripCreationSession } from "@/lib/api/trip-creation"
 import { CategoryConfirmationPanel } from "./category-confirmation-panel"
 
@@ -36,9 +37,7 @@ export default async function CategoriesStepPage({
     redirect(`/new/review-images?session=${tripSession.id}`)
   }
 
-  const defaults = tripSession.confirmedCategories.length
-    ? tripSession.confirmedCategories
-    : tripSession.classification.scores.filter((score) => score.value >= 20).slice(0, 3).map((score) => score.id)
+  const defaults = defaultConfirmedCategories(tripSession.confirmedCategories, tripSession.classification)
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -96,9 +95,31 @@ export default async function CategoriesStepPage({
                       {prediction.confidenceLabel}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between gap-3 px-3 py-2.5">
-                    <span className="text-[12.5px] text-muted-foreground">Predicted: {prediction.topLabel}</span>
-                    <span className="text-[12.5px] font-medium text-primary">{prediction.image?.sourceLabel}</span>
+                  <div className="space-y-3 px-3 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[12.5px] text-muted-foreground">Predicted: {prediction.topLabel}</span>
+                      <span className="text-[12.5px] font-medium text-primary">{prediction.image?.sourceLabel}</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2">
+                      {prediction.scores.map((score) => (
+                        <div key={score.id} className="grid grid-cols-[18px_1fr_34px] items-center gap-2">
+                          <CategoryIcon id={score.id} className="size-3.5 text-primary" />
+                          <div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11.5px] font-medium text-foreground">{score.label}</span>
+                            </div>
+                            <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-secondary">
+                              <div
+                                className="h-full rounded-full bg-primary"
+                                style={{ width: `${score.value}%` }}
+                                aria-hidden
+                              />
+                            </div>
+                          </div>
+                          <span className="text-right text-[11px] text-muted-foreground">{score.value}%</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </li>
               ))}

@@ -27,7 +27,7 @@ def build_context_payload(
         "schema_version": SCHEMA_VERSION,
         "confirmed_categories": confirmed_categories,
         "classifier_summary": {
-            "source": "mobilenetv2",
+            "source": "mobilenetv4_medium",
             "mode": classifier_mode,
             "model_version": classifier_model_version,
         },

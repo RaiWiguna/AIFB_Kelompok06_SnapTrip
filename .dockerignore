@@ -3,6 +3,13 @@
 .agents
 docs
 training
+!training/
+training/*
+!training/output/
+training/output/*
+!training/output/model/
+training/output/model/*
+!training/output/model/snaptrip_mobilenetv4_medium_v2_best.pth
 node_modules
 app/frontend/node_modules
 app/frontend/.next
