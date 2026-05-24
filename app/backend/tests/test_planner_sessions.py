@@ -1,7 +1,7 @@
 import pytest
 from conftest import signup
 
-from app.schemas.planner import PlannerAgentStepV1, PlannerStartRequest
+from app.schemas.planner import PlannerAgentStepV1, PlannerMessageRequest, PlannerStartRequest
 from app.services.planner import PlannerService
 
 
@@ -356,6 +356,112 @@ async def test_research_then_partial_gemini_itinerary_write_completes_missing_do
     assert planner["messages"][-1]["content"] == (
         "I completed the missing planner documents and validated the trip memo, itinerary, and budget plan."
     )
+
+
+@pytest.mark.asyncio
+async def test_agent_tool_document_args_are_persisted_to_latest_documents(client):
+    class EditingProvider:
+        enabled = True
+
+        async def decide(self, context, trace_context=None):
+            text = context["user_text"].lower()
+            docs = context["documents"]
+            if "day 6" in text:
+                day = dict(docs["full_itinerary"]["content"]["days"][5])
+                day.update(
+                    {
+                        "title": "Air Terjun Madakaripura",
+                        "summary": "Waterfall stop near Probolinggo before closing the Bromo route.",
+                        "description": "Explore Air Terjun Madakaripura with a local guide, then return toward Probolinggo.",
+                        "highlights": ["Waterfall", "Guide recommended", "Probolinggo"],
+                        "activities": [
+                            {
+                                "time": "09:00",
+                                "title": "Explore Air Terjun Madakaripura",
+                                "detail": "Short guided waterfall walk with time for photos and a relaxed lunch.",
+                                "location": "Probolinggo",
+                                "duration": "3h",
+                            }
+                        ],
+                    }
+                )
+                return PlannerAgentStepV1(
+                    intent="change_preferences",
+                    requires_document_edit=True,
+                    affected_documents=["full_itinerary"],
+                    assistant_text="Day 6 now uses Air Terjun Madakaripura.",
+                    actions=[{"tool": "patch_itinerary_day", "args": {"day": 6, "day_content": day}}],
+                )
+            if "memo" in text:
+                memo = dict(docs["trip_memo"]["content"])
+                memo["caption"] = "Detailed Bromo route memo with waterfall logistics."
+                memo["markdown"] = (
+                    memo["markdown"]
+                    + "\n\n### Route logistics\n\n"
+                    "- Day 6 now closes with Air Terjun Madakaripura near Probolinggo.\n"
+                    "- Carry a rain layer and confirm local guide access before departure."
+                )
+                return PlannerAgentStepV1(
+                    intent="change_preferences",
+                    requires_document_edit=True,
+                    affected_documents=["trip_memo"],
+                    assistant_text="Memo expanded.",
+                    actions=[{"tool": "replace_trip_memo", "args": {"content": memo}}],
+                )
+            budget = dict(docs["budget_plan"]["content"])
+            budget["estimated_total_idr"] = 900_000
+            return PlannerAgentStepV1(
+                intent="change_budget",
+                requires_document_edit=True,
+                affected_documents=["budget_plan"],
+                assistant_text="Budget made more efficient.",
+                actions=[{"tool": "replace_budget_plan", "args": {"content": budget}}],
+            )
+
+    user = signup(client, "planner-agent-args@example.com")
+    session, item = await create_planner_seed(
+        client,
+        user["id"],
+        name="Mount Bromo",
+        region="East Java",
+        categories=["gunung"],
+    )
+    created = client.post(
+        f"/api/planner-sessions/from-trip-creation/{session['id']}",
+        json=planner_payload_for_duration(item["id"], 6, traveler_count=2),
+    ).json()["session"]
+    service = PlannerService(
+        store=client.app.state.store,
+        settings=client.app.state.settings,
+        planner_provider=EditingProvider(),
+    )
+
+    itinerary_response = await service.send_message(
+        created["id"],
+        user,
+        PlannerMessageRequest(text="oh ya, day 6 nya ganti ke tempat lain"),
+    )
+    day_6 = itinerary_response["session"]["documents"]["full_itinerary"]["content"]["days"][5]
+    assert day_6["title"] == "Air Terjun Madakaripura"
+    assert "Madakaripura" in itinerary_response["session"]["display"]["itinerary"][5]["title"]
+
+    memo_response = await service.send_message(
+        created["id"],
+        user,
+        PlannerMessageRequest(text="buat trip memo lebih lengkap"),
+    )
+    memo = memo_response["session"]["documents"]["trip_memo"]["content"]
+    assert memo["caption"] == "Detailed Bromo route memo with waterfall logistics."
+    assert "Route logistics" in memo["markdown"]
+
+    budget_response = await service.send_message(
+        created["id"],
+        user,
+        PlannerMessageRequest(text="ubah budget jadi lebih efisien"),
+    )
+    budget = budget_response["session"]["documents"]["budget_plan"]["content"]
+    assert budget["estimated_total_idr"] == 900_000
+    assert budget_response["session"]["display"]["budget"]["estimated_total_idr"] == 900_000
 
 
 @pytest.mark.asyncio

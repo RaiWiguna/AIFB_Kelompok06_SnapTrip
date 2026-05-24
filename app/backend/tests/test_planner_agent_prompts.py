@@ -88,3 +88,7 @@ def test_planner_support_prompts_cover_context_repair_research_and_flow():
     assert "Review-readiness request" in PLANNER_ACTION_SELECTION_V1
     assert "Unsupported action" in PLANNER_ACTION_SELECTION_V1
     assert "Clarification cases" in PLANNER_ACTION_SELECTION_V1
+    assert "args.content as a complete trip_memo.v1 object" in PLANNER_TOOL_POLICY_V1["tool_catalog"]["replace_trip_memo"]["args_contract"]
+    assert "args.content as a complete full_itinerary.v1 object" in PLANNER_TOOL_POLICY_V1["tool_catalog"]["replace_full_itinerary"]["args_contract"]
+    assert "args.content as a complete budget_plan.v1 object" in PLANNER_TOOL_POLICY_V1["tool_catalog"]["replace_budget_plan"]["args_contract"]
+    assert "args.day plus args.day_content" in PLANNER_TOOL_POLICY_V1["tool_catalog"]["patch_itinerary_day"]["args_contract"]

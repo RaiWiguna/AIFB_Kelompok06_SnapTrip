@@ -582,11 +582,11 @@ class PlannerService:
             elif tool == "read_documents":
                 result = {"documents": await self._latest_documents(planner_session_id)}
             elif tool == "replace_trip_memo":
-                result = await self._replace_trip_memo(planner_session_id, run_id)
+                result = await self._replace_trip_memo(planner_session_id, run_id, action.get("args", {}))
             elif tool == "replace_full_itinerary":
-                result = await self._replace_full_itinerary(planner_session_id, run_id)
+                result = await self._replace_full_itinerary(planner_session_id, run_id, action.get("args", {}))
             elif tool == "replace_budget_plan":
-                result = await self._replace_budget_plan(planner_session_id, run_id)
+                result = await self._replace_budget_plan(planner_session_id, run_id, action.get("args", {}))
             elif tool == "patch_itinerary_day":
                 result = await self._patch_itinerary(planner_session_id, run_id, action.get("args", {}))
             elif tool == "patch_budget_category":
@@ -632,12 +632,18 @@ class PlannerService:
             )
             raise
 
-    async def _replace_trip_memo(self, planner_session_id: str, run_id: str) -> dict[str, Any]:
+    async def _replace_trip_memo(self, planner_session_id: str, run_id: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
+        if content := planner_document_arg(args or {}, "trip_memo"):
+            document = TripMemoDocumentV1.model_validate(content).model_dump()
+            return await self._commit_document(planner_session_id, run_id, "trip_memo", "trip_memo.v1", document)
         context = await self._read_trip_context(planner_session_id)
         memo = synthesize_memo(context["plan"], context["destinations"])
         return await self._commit_document(planner_session_id, run_id, "trip_memo", "trip_memo.v1", TripMemoDocumentV1.model_validate(memo).model_dump())
 
-    async def _replace_full_itinerary(self, planner_session_id: str, run_id: str) -> dict[str, Any]:
+    async def _replace_full_itinerary(self, planner_session_id: str, run_id: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
+        if content := planner_document_arg(args or {}, "full_itinerary"):
+            document = FullItineraryDocumentV1.model_validate(content).model_dump(by_alias=True)
+            return await self._commit_document(planner_session_id, run_id, "full_itinerary", "full_itinerary.v1", document)
         context = await self._read_trip_context(planner_session_id)
         days = synthesize_itinerary(
             await self._route_destinations(planner_session_id, context["session"]["duration_days"], "")
@@ -647,8 +653,16 @@ class PlannerService:
         document = FullItineraryDocumentV1.model_validate({"days": days}).model_dump(by_alias=True)
         return await self._commit_document(planner_session_id, run_id, "full_itinerary", "full_itinerary.v1", document)
 
-    async def _replace_budget_plan(self, planner_session_id: str, run_id: str) -> dict[str, Any]:
+    async def _replace_budget_plan(self, planner_session_id: str, run_id: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
         context = await self._read_trip_context(planner_session_id)
+        if content := planner_document_arg(args or {}, "budget_plan"):
+            document = BudgetPlanDocumentV1.model_validate(content).model_dump()
+            document = normalize_budget_content(
+                document,
+                traveler_count=int(context["session"]["traveler_count"]),
+                duration_days=int(context["session"]["duration_days"]),
+            )
+            return await self._commit_document(planner_session_id, run_id, "budget_plan", "budget_plan.v1", document)
         items = [context["recommendation_item"]] if context.get("recommendation_item") else []
         destinations = await self._route_destinations(planner_session_id, context["session"]["duration_days"], "")
         total = estimate_total_idr(items, context["session"]["duration_days"], context["session"]["traveler_count"])
@@ -675,7 +689,25 @@ class PlannerService:
     async def _patch_itinerary(self, planner_session_id: str, run_id: str, args: dict[str, Any]) -> dict[str, Any]:
         documents = await self._latest_documents(planner_session_id)
         if "full_itinerary" not in documents:
-            return await self._replace_full_itinerary(planner_session_id, run_id)
+            return await self._replace_full_itinerary(planner_session_id, run_id, args)
+        if day_content := itinerary_day_arg(args):
+            content = documents["full_itinerary"]["content"]
+            days = [dict(day) for day in content.get("days") or []]
+            target_day = int(day_content.get("day") or args.get("day") or args.get("day_number") or 0)
+            if not target_day:
+                raise ValueError("patch_itinerary_day requires a target day")
+            patched = False
+            for index, day in enumerate(days):
+                if int(day.get("day") or 0) == target_day:
+                    replacement = {**day, **day_content, "day": target_day}
+                    days[index] = replacement
+                    patched = True
+                    break
+            if not patched:
+                days.append({**day_content, "day": target_day})
+            days = sorted(days, key=lambda item: int(item.get("day") or 0))
+            document = FullItineraryDocumentV1.model_validate({"days": days}).model_dump(by_alias=True)
+            return await self._commit_document(planner_session_id, run_id, "full_itinerary", "full_itinerary.v1", document)
         session = await self.store.find_one("plannerSessions", id=planner_session_id)
         if args.get("duration_days"):
             session = await self._update_duration(planner_session_id, int(args["duration_days"]))
@@ -696,10 +728,14 @@ class PlannerService:
     async def _patch_budget(self, planner_session_id: str, run_id: str, args: dict[str, Any]) -> dict[str, Any]:
         documents = await self._latest_documents(planner_session_id)
         if "budget_plan" not in documents:
-            return await self._replace_budget_plan(planner_session_id, run_id)
+            return await self._replace_budget_plan(planner_session_id, run_id, args)
         session = await self.store.find_one("plannerSessions", id=planner_session_id)
         traveler_count = int((session or {}).get("traveler_count") or 1)
         duration = int((session or {}).get("duration_days") or 1)
+        if content_arg := planner_document_arg(args, "budget_plan"):
+            content = BudgetPlanDocumentV1.model_validate(content_arg).model_dump()
+            content = normalize_budget_content(content, traveler_count=traveler_count, duration_days=duration)
+            return await self._commit_document(planner_session_id, run_id, "budget_plan", "budget_plan.v1", content)
         content = documents["budget_plan"]["content"]
         total = int(content.get("estimated_total_idr") or 0) or 500_000
         intent = (args.get("intent") or "").lower()
@@ -724,7 +760,7 @@ class PlannerService:
                 traveler_count=traveler_count,
                 duration_days=duration,
             )
-        elif "cheap" in intent or "murah" in intent or "cap" in intent or "under" in intent:
+        elif any(marker in intent for marker in ["cheap", "murah", "hemat", "efisien", "efficient", "budget-friendly", "lebih terjangkau", "cap", "under"]):
             total = round(total * 0.85)
             content = normalize_budget_content(
                 {**content, "estimated_total_idr": total, "budget_constraint": None},
@@ -744,7 +780,10 @@ class PlannerService:
     async def _patch_memo(self, planner_session_id: str, run_id: str, args: dict[str, Any]) -> dict[str, Any]:
         documents = await self._latest_documents(planner_session_id)
         if "trip_memo" not in documents:
-            return await self._replace_trip_memo(planner_session_id, run_id)
+            return await self._replace_trip_memo(planner_session_id, run_id, args)
+        if content := planner_document_arg(args, "trip_memo"):
+            document = TripMemoDocumentV1.model_validate(content).model_dump()
+            return await self._commit_document(planner_session_id, run_id, "trip_memo", "trip_memo.v1", document)
         context = await self._read_trip_context(planner_session_id)
         destinations = await self._route_destinations(
             planner_session_id,
@@ -1179,6 +1218,57 @@ def empty_budget() -> dict[str, Any]:
         "per_person_idr": None,
         "budget_constraint": None,
     }
+
+
+def planner_document_arg(args: dict[str, Any], document_type: str) -> dict[str, Any] | None:
+    if not args:
+        return None
+    candidates = [
+        args.get("content"),
+        args.get("document"),
+        args.get("document_content"),
+        args.get(document_type),
+    ]
+    if document_type == "trip_memo":
+        candidates.extend([args.get("memo"), args if "markdown" in args else None])
+    elif document_type == "full_itinerary":
+        candidates.extend([args.get("itinerary"), args if "days" in args else None])
+    elif document_type == "budget_plan":
+        candidates.extend([args.get("budget"), args if "categories" in args and "daily" in args else None])
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        nested = candidate.get("content")
+        if isinstance(nested, dict):
+            candidate = nested
+        if document_type == "trip_memo" and "markdown" in candidate:
+            return candidate
+        if document_type == "full_itinerary" and "days" in candidate:
+            return candidate
+        if document_type == "budget_plan" and "categories" in candidate and "daily" in candidate:
+            return candidate
+    return None
+
+
+def itinerary_day_arg(args: dict[str, Any]) -> dict[str, Any] | None:
+    if full_document := planner_document_arg(args, "full_itinerary"):
+        target_day = int(args.get("day") or args.get("day_number") or 0)
+        days = full_document.get("days") or []
+        if target_day:
+            return next((day for day in days if int(day.get("day") or 0) == target_day), None)
+        if len(days) == 1:
+            return days[0]
+    for key in ["day_content", "day_plan", "replacement", "content", "document"]:
+        candidate = args.get(key)
+        if isinstance(candidate, dict):
+            nested = candidate.get("content")
+            if isinstance(nested, dict):
+                candidate = nested
+            if "title" in candidate and "activities" in candidate:
+                return candidate
+    if "title" in args and "activities" in args:
+        return args
+    return None
 
 
 def item_categories(item: dict[str, Any] | None) -> list[str]:

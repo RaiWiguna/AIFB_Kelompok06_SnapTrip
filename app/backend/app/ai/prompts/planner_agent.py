@@ -400,24 +400,28 @@ PLANNER_TOOL_POLICY_V1 = {
         "replace_trip_memo": {
             "purpose": "Replace the complete trip memo with schema-valid content.",
             "use_when": "Initial drafting or broad trip-story changes.",
+            "args_contract": "Pass args.content as a complete trip_memo.v1 object when you have authored concrete memo content.",
             "mutates_state": True,
             "requires_followup": ["validate_documents"],
         },
         "replace_full_itinerary": {
             "purpose": "Replace the complete day-by-day itinerary with schema-valid content.",
             "use_when": "Initial drafting, duration changes, major route changes, or when patches would be inconsistent.",
+            "args_contract": "Pass args.content as a complete full_itinerary.v1 object when the itinerary should use your selected destinations and day text.",
             "mutates_state": True,
             "requires_followup": ["validate_documents"],
         },
         "replace_budget_plan": {
             "purpose": "Replace the complete budget plan with schema-valid category and daily totals.",
             "use_when": "Initial drafting, traveler count changes, duration changes, or major budget model changes.",
+            "args_contract": "Pass args.content as a complete budget_plan.v1 object when you have recalculated totals, categories, or daily rows.",
             "mutates_state": True,
             "requires_followup": ["compute_budget_summary", "validate_documents"],
         },
         "patch_itinerary_day": {
             "purpose": "Apply a targeted day-level itinerary revision.",
             "use_when": "Adding or adjusting a stop, pacing, transport, meal, lodging, or daily activity without full rebuild.",
+            "args_contract": "Pass args.day plus args.day_content as one complete itinerary day object when changing a specific day.",
             "mutates_state": True,
             "requires_followup": ["validate_documents"],
         },
