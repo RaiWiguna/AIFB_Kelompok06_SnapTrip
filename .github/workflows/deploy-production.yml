@@ -1,9 +1,6 @@
 name: Deploy Production
 
 on:
-  push:
-    branches:
-      - dev
   workflow_run:
     workflows: ["CI"]
     types:
@@ -25,7 +22,6 @@ permissions:
 jobs:
   deploy:
     if: >
-      github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
        contains(fromJSON('["main", "dev"]'), github.event.workflow_run.head_branch))
@@ -34,7 +30,7 @@ jobs:
     timeout-minutes: 75
     env:
       APP_ENV: production
-      DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.git_ref || github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.git_ref || github.event.workflow_run.head_sha }}
       REMOTE_BASE_DIR: /opt/snaptrip/hosted
       REMOTE_RUNTIME_ENV: /opt/snaptrip/hosted/shared/runtime.env
       REMOTE_HOST: ${{ secrets.PRODUCTION_VM_HOST }}

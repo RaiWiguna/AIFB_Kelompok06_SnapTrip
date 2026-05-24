@@ -465,6 +465,78 @@ async def test_agent_tool_document_args_are_persisted_to_latest_documents(client
 
 
 @pytest.mark.asyncio
+async def test_partial_agent_document_payloads_are_normalized_instead_of_failing(client):
+    class PartialPayloadProvider:
+        enabled = True
+
+        async def decide(self, context, trace_context=None):
+            text = context["user_text"].lower()
+            if "day 3" in text:
+                return PlannerAgentStepV1(
+                    intent="add_destination",
+                    requires_document_edit=True,
+                    affected_documents=["full_itinerary"],
+                    assistant_text="I added Air Terjun Madakaripura as day 3.",
+                    actions=[
+                        {
+                            "tool": "patch_itinerary_day",
+                            "args": {
+                                "day": 3,
+                                "day_content": {
+                                    "title": "Air Terjun Madakaripura",
+                                    "summary": "Waterfall stop near Bromo.",
+                                    "description": "Visit Air Terjun Madakaripura before returning from the Bromo area.",
+                                    "activities": [{"title": "Waterfall walk", "detail": "Guided walk into the waterfall canyon."}],
+                                },
+                            },
+                        }
+                    ],
+                )
+            return PlannerAgentStepV1(
+                intent="change_preferences",
+                requires_document_edit=True,
+                affected_documents=["trip_memo"],
+                assistant_text="Memo expanded.",
+                actions=[
+                    {
+                        "tool": "replace_trip_memo",
+                        "args": {"content": {"markdown": "### Expanded Bromo memo\n\nIncludes sunrise pacing, jeep timing, and waterfall contingency."}},
+                    }
+                ],
+            )
+
+    user = signup(client, "planner-partial-payload@example.com")
+    session, item = await create_planner_seed(client, user["id"], name="Mount Bromo", region="East Java", categories=["gunung"])
+    created = client.post(
+        f"/api/planner-sessions/from-trip-creation/{session['id']}",
+        json=planner_payload_for_duration(item["id"], 2, traveler_count=2),
+    ).json()["session"]
+    service = PlannerService(
+        store=client.app.state.store,
+        settings=client.app.state.settings,
+        planner_provider=PartialPayloadProvider(),
+    )
+
+    day_response = await service.send_message(created["id"], user, PlannerMessageRequest(text="ok tambahkan ke day 3"))
+    planner = day_response["session"]
+    assert planner["status"] == "ready_to_review"
+    assert planner["duration_days"] == 3
+    assert planner["travel_end_date"] == "2026-06-12"
+    day_3 = planner["documents"]["full_itinerary"]["content"]["days"][2]
+    assert day_3["title"] == "Air Terjun Madakaripura"
+    assert day_3["cover"]
+    assert day_3["transport"]["to"] == "Air Terjun Madakaripura"
+    assert planner["messages"][-1]["content"] == "I added Air Terjun Madakaripura as day 3."
+
+    memo_response = await service.send_message(created["id"], user, PlannerMessageRequest(text="buat memo lebih lengkap"))
+    memo = memo_response["session"]["documents"]["trip_memo"]["content"]
+    assert "Expanded Bromo memo" in memo["markdown"]
+    assert memo["caption"]
+    assert memo["tiles"]
+    assert memo_response["session"]["messages"][-1]["content"] == "Memo expanded."
+
+
+@pytest.mark.asyncio
 async def test_destination_question_answers_without_mutating_documents(client):
     user = signup(client, "planner-question-only@example.com")
     session, item = await create_planner_seed(

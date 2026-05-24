@@ -660,7 +660,10 @@ class PlannerService:
 
     async def _replace_trip_memo(self, planner_session_id: str, run_id: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
         if content := planner_document_arg(args or {}, "trip_memo"):
-            document = TripMemoDocumentV1.model_validate(content).model_dump()
+            documents = await self._latest_documents(planner_session_id)
+            document = TripMemoDocumentV1.model_validate(
+                normalize_trip_memo_arg(content, documents.get("trip_memo", {}).get("content") or {})
+            ).model_dump()
             return await self._commit_document(planner_session_id, run_id, "trip_memo", "trip_memo.v1", document)
         context = await self._read_trip_context(planner_session_id)
         memo = synthesize_memo(context["plan"], context["destinations"])
@@ -668,7 +671,10 @@ class PlannerService:
 
     async def _replace_full_itinerary(self, planner_session_id: str, run_id: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
         if content := planner_document_arg(args or {}, "full_itinerary"):
-            document = FullItineraryDocumentV1.model_validate(content).model_dump(by_alias=True)
+            documents = await self._latest_documents(planner_session_id)
+            document = FullItineraryDocumentV1.model_validate(
+                normalize_itinerary_arg(content, documents.get("full_itinerary", {}).get("content") or {})
+            ).model_dump(by_alias=True)
             return await self._commit_document(planner_session_id, run_id, "full_itinerary", "full_itinerary.v1", document)
         context = await self._read_trip_context(planner_session_id)
         days = synthesize_itinerary(
@@ -722,6 +728,9 @@ class PlannerService:
             target_day = int(day_content.get("day") or args.get("day") or args.get("day_number") or 0)
             if not target_day:
                 raise ValueError("patch_itinerary_day requires a target day")
+            session = await self.store.find_one("plannerSessions", id=planner_session_id)
+            if target_day > int((session or {}).get("duration_days") or 0):
+                session = await self._update_duration(planner_session_id, target_day)
             patched = False
             for index, day in enumerate(days):
                 if int(day.get("day") or 0) == target_day:
@@ -730,7 +739,12 @@ class PlannerService:
                     patched = True
                     break
             if not patched:
-                days.append({**day_content, "day": target_day})
+                days.append(fill_itinerary_day_defaults({**day_content, "day": target_day}, {}, target_day))
+            else:
+                days = [
+                    fill_itinerary_day_defaults(day, content.get("days", [])[index] if index < len(content.get("days", [])) else {}, int(day.get("day") or index + 1))
+                    for index, day in enumerate(days)
+                ]
             days = sorted(days, key=lambda item: int(item.get("day") or 0))
             document = FullItineraryDocumentV1.model_validate({"days": days}).model_dump(by_alias=True)
             return await self._commit_document(planner_session_id, run_id, "full_itinerary", "full_itinerary.v1", document)
@@ -808,7 +822,9 @@ class PlannerService:
         if "trip_memo" not in documents:
             return await self._replace_trip_memo(planner_session_id, run_id, args)
         if content := planner_document_arg(args, "trip_memo"):
-            document = TripMemoDocumentV1.model_validate(content).model_dump()
+            document = TripMemoDocumentV1.model_validate(
+                normalize_trip_memo_arg(content, documents.get("trip_memo", {}).get("content") or {})
+            ).model_dump()
             return await self._commit_document(planner_session_id, run_id, "trip_memo", "trip_memo.v1", document)
         context = await self._read_trip_context(planner_session_id)
         destinations = await self._route_destinations(
@@ -1295,6 +1311,70 @@ def itinerary_day_arg(args: dict[str, Any]) -> dict[str, Any] | None:
     if "title" in args and "activities" in args:
         return args
     return None
+
+
+def normalize_trip_memo_arg(content: dict[str, Any], previous: dict[str, Any]) -> dict[str, Any]:
+    normalized = {**previous, **content}
+    normalized["markdown"] = str(normalized.get("markdown") or previous.get("markdown") or normalized.get("caption") or "Trip planning notes.")
+    normalized["caption"] = str(normalized.get("caption") or previous.get("caption") or "Trip planning notes")
+    normalized["source"] = str(normalized.get("source") or previous.get("source") or "Planner")
+    tiles = normalized.get("tiles") or previous.get("tiles") or [{"src": "/landing/indonesia-map.png", "alt": normalized["caption"]}]
+    normalized["tiles"] = tiles
+    normalized["items"] = int(normalized.get("items") or previous.get("items") or max(len(tiles), 1))
+    return normalized
+
+
+def normalize_itinerary_arg(content: dict[str, Any], previous: dict[str, Any]) -> dict[str, Any]:
+    previous_days = {int(day.get("day") or 0): day for day in previous.get("days") or []}
+    normalized_days = []
+    for index, day in enumerate(content.get("days") or [], start=1):
+        day_number = int(day.get("day") or index)
+        normalized_days.append(fill_itinerary_day_defaults(day, previous_days.get(day_number, {}), day_number))
+    return {"days": normalized_days or list(previous_days.values())}
+
+
+def fill_itinerary_day_defaults(day: dict[str, Any], previous: dict[str, Any], day_number: int) -> dict[str, Any]:
+    title = str(day.get("title") or day.get("name") or previous.get("title") or f"Day {day_number} plan")
+    description = str(day.get("description") or day.get("summary") or previous.get("description") or previous.get("summary") or f"Explore {title}.")
+    region = str(day.get("region") or previous.get("region") or (previous.get("transport") or {}).get("to") or title)
+    return {
+        "day": day_number,
+        "title": title,
+        "summary": str(day.get("summary") or description[:96]),
+        "description": description,
+        "cover": str(day.get("cover") or previous.get("cover") or "/landing/indonesia-map.png"),
+        "dateLabel": str(day.get("dateLabel") or previous.get("dateLabel") or f"Day {day_number}"),
+        "highlights": list(day.get("highlights") or previous.get("highlights") or ["Recommended stop"]),
+        "activities": normalize_itinerary_activities(day.get("activities") or previous.get("activities"), title, description, region),
+        "transport": {
+            **{"mode": "Drive", "from": "Previous stop" if day_number > 1 else "Start", "to": title, "durationLabel": "Flexible"},
+            **(previous.get("transport") or {}),
+            **(day.get("transport") or {}),
+        },
+        "accommodation": {
+            **{"name": "Local stay to confirm", "area": region, "nights": 1},
+            **(previous.get("accommodation") or {}),
+            **(day.get("accommodation") or {}),
+        },
+        "meals": dict(day.get("meals") or previous.get("meals") or {"lunch": "Local restaurant to confirm"}),
+        "estCost": dict(day.get("estCost") or previous.get("estCost") or {"value": "Budget TBD", "note": "estimate"}),
+    }
+
+
+def normalize_itinerary_activities(value: Any, title: str, description: str, region: str) -> list[dict[str, Any]]:
+    if isinstance(value, list) and value:
+        return [
+            {
+                "time": str(item.get("time") or "09:00"),
+                "title": str(item.get("title") or f"Explore {title}"),
+                "detail": str(item.get("detail") or item.get("description") or description),
+                "location": item.get("location") or region,
+                "duration": item.get("duration") or "3h",
+            }
+            for item in value
+            if isinstance(item, dict)
+        ] or [{"time": "09:00", "title": f"Explore {title}", "detail": description, "location": region, "duration": "3h"}]
+    return [{"time": "09:00", "title": f"Explore {title}", "detail": description, "location": region, "duration": "3h"}]
 
 
 def item_categories(item: dict[str, Any] | None) -> list[str]:
