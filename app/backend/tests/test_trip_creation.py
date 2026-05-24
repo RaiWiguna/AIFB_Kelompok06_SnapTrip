@@ -3,6 +3,9 @@ from io import BytesIO
 from conftest import signup
 from PIL import Image
 
+import app.api.trip_creation as trip_creation_module
+from app.services.classifier import InvalidClassifierImageError
+
 
 def image_bytes(format: str = "JPEG") -> bytes:
     buffer = BytesIO()
@@ -58,6 +61,50 @@ def test_upload_classify_confirm_and_seeds(client):
     seeds = client.get("/api/destination-seeds", params={"category": "pantai"})
     assert seeds.status_code == 200
     assert seeds.json()["seeds"]
+
+
+def test_classify_maps_invalid_classifier_image_to_422(client, monkeypatch):
+    class InvalidBytesClassifier:
+        async def predict(self, images):
+            raise InvalidClassifierImageError("synthetic decode failure")
+
+    signup(client)
+    session_id = client.post("/api/trip-creation-sessions", json={"source": "upload"}).json()["session"]["id"]
+    client.post(
+        f"/api/trip-creation-sessions/{session_id}/images",
+        files=[("files", ("a.jpg", image_bytes("JPEG"), "image/jpeg"))],
+    )
+    monkeypatch.setattr(trip_creation_module, "get_classifier", lambda settings: InvalidBytesClassifier())
+
+    response = client.post(f"/api/trip-creation-sessions/{session_id}/classify")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["message"] == "Image file is invalid or corrupted"
+
+
+def test_classify_maps_unknown_classifier_category_to_503(client, monkeypatch):
+    class UnknownCategoryClassifier:
+        async def predict(self, images):
+            return [
+                {
+                    "image_id": images[0]["id"],
+                    "top_category": "museum",
+                    "predictions": [{"category": "museum", "confidence": 1.0}],
+                }
+            ]
+
+    signup(client)
+    session_id = client.post("/api/trip-creation-sessions", json={"source": "upload"}).json()["session"]["id"]
+    client.post(
+        f"/api/trip-creation-sessions/{session_id}/images",
+        files=[("files", ("a.jpg", image_bytes("JPEG"), "image/jpeg"))],
+    )
+    monkeypatch.setattr(trip_creation_module, "get_classifier", lambda settings: UnknownCategoryClassifier())
+
+    response = client.post(f"/api/trip-creation-sessions/{session_id}/classify")
+
+    assert response.status_code == 503
+    assert response.json()["error"]["message"] == "Image classification is unavailable"
 
 
 def test_session_recovery_returns_images_classification_and_selected_recommendations(client):

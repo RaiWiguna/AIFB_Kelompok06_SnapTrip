@@ -9,7 +9,12 @@ from app.core.categories import validate_categories
 from app.core.ids import new_id
 from app.schemas.api import ConfirmCategoriesRequest, TripCreationSessionCreateRequest
 from app.schemas.recommendations import SelectedRecommendationsRequest
-from app.services.classifier import aggregate_predictions, get_classifier
+from app.services.classifier import (
+    ClassifierError,
+    InvalidClassifierImageError,
+    aggregate_predictions,
+    get_classifier,
+)
 from app.services.recommendations import RecommendationService
 
 router = APIRouter()
@@ -237,12 +242,11 @@ async def classify_session(
     classifier = get_classifier(settings)
     try:
         per_image = await classifier.predict(images)
-    except RuntimeError as exc:
-        detail = str(exc)
-        if detail.startswith("Invalid image bytes"):
-            raise HTTPException(status_code=422, detail="Image file is invalid or corrupted") from exc
+        aggregated = aggregate_predictions(per_image)
+    except InvalidClassifierImageError as exc:
+        raise HTTPException(status_code=422, detail="Image file is invalid or corrupted") from exc
+    except ClassifierError as exc:
         raise HTTPException(status_code=503, detail="Image classification is unavailable") from exc
-    aggregated = aggregate_predictions(per_image)
     result = await store.save_doc(
         "classificationResults",
         {

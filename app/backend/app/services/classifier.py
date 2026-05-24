@@ -11,6 +11,22 @@ from app.core.categories import CANONICAL_CATEGORIES
 CATEGORY_ORDER = [category["id"] for category in CANONICAL_CATEGORIES]
 
 
+class ClassifierError(RuntimeError):
+    """Base error for classifier runtime failures."""
+
+
+class ClassifierInputUnavailableError(ClassifierError):
+    """Raised when a stored image cannot be read for inference."""
+
+
+class InvalidClassifierImageError(ClassifierError):
+    """Raised when image bytes cannot be decoded for inference."""
+
+
+class ClassifierOutputError(ClassifierError):
+    """Raised when classifier output violates the expected schema."""
+
+
 class MockClassifier:
     def __init__(self, model_version: str):
         self.model_version = model_version
@@ -49,16 +65,16 @@ class MobileNetV4Classifier:
             import torch
             from torchvision import transforms
         except ImportError as exc:
-            raise RuntimeError("PyTorch, torchvision, and timm are required for real classifier mode") from exc
+            raise ClassifierError("PyTorch, torchvision, and timm are required for real classifier mode") from exc
 
         path = Path(self.model_path)
         if not path.exists():
-            raise RuntimeError(f"Classifier model artifact not found: {path}")
+            raise ClassifierError(f"Classifier model artifact not found: {path}")
 
         checkpoint = torch.load(path, map_location="cpu")
         classes = checkpoint.get("classes") or CATEGORY_ORDER
         if list(classes) != CATEGORY_ORDER:
-            raise RuntimeError("Classifier checkpoint classes do not match SnapTrip categories")
+            raise ClassifierError("Classifier checkpoint classes do not match SnapTrip categories")
 
         model = timm.create_model(self.model_name, pretrained=False, num_classes=len(CATEGORY_ORDER))
         state_dict = checkpoint.get("model_state_dict") or checkpoint
@@ -94,11 +110,15 @@ class MobileNetV4Classifier:
         for image in images:
             data = image.get("bytes")
             if not data:
-                raise RuntimeError(f"Image bytes are unavailable for classifier input: {image.get('id')}")
+                raise ClassifierInputUnavailableError(
+                    f"Image bytes are unavailable for classifier input: {image.get('id')}"
+                )
             try:
                 pil_image = Image.open(BytesIO(data)).convert("RGB")
             except (SyntaxError, UnidentifiedImageError, OSError) as exc:
-                raise RuntimeError(f"Invalid image bytes for classifier input: {image.get('id')}") from exc
+                raise InvalidClassifierImageError(
+                    f"Invalid image bytes for classifier input: {image.get('id')}"
+                ) from exc
             tensors.append(transform(pil_image))
             image_ids.append(image["id"])
 
@@ -144,8 +164,11 @@ def aggregate_predictions(per_image: list[dict]) -> list[dict]:
         counts += 1
         seen_categories = set()
         for prediction in result["predictions"]:
-            seen_categories.add(prediction["category"])
-            totals[prediction["category"]] += prediction["confidence"]
+            category = prediction["category"]
+            if category not in CATEGORY_ORDER:
+                raise ClassifierOutputError(f"Unknown classifier category: {category}")
+            seen_categories.add(category)
+            totals[category] += prediction["confidence"]
         for category in CATEGORY_ORDER:
             if category not in seen_categories:
                 totals[category] += 0.0

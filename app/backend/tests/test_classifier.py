@@ -5,7 +5,13 @@ import pytest
 from PIL import Image
 
 from app.core.categories import CATEGORY_IDS
-from app.services.classifier import MobileNetV4Classifier, MockClassifier, aggregate_predictions
+from app.services.classifier import (
+    ClassifierOutputError,
+    InvalidClassifierImageError,
+    MobileNetV4Classifier,
+    MockClassifier,
+    aggregate_predictions,
+)
 
 
 def image_bytes() -> bytes:
@@ -50,6 +56,22 @@ def test_aggregate_predictions_averages_every_label():
     assert aggregated[0]["category"] == "pantai"
 
 
+def test_aggregate_predictions_rejects_unknown_category():
+    with pytest.raises(ClassifierOutputError, match="Unknown classifier category: museum"):
+        aggregate_predictions(
+            [
+                {
+                    "image_id": "img_1",
+                    "top_category": "museum",
+                    "predictions": [
+                        {"category": "pantai", "confidence": 0.8},
+                        {"category": "museum", "confidence": 0.2},
+                    ],
+                }
+            ]
+        )
+
+
 @pytest.mark.asyncio
 async def test_mock_classifier_returns_all_canonical_labels():
     classifier = MockClassifier("test-model")
@@ -57,6 +79,19 @@ async def test_mock_classifier_returns_all_canonical_labels():
 
     assert predictions[0]["top_category"] == "pantai"
     assert {item["category"] for item in predictions[0]["predictions"]} == set(CATEGORY_IDS)
+
+
+@pytest.mark.asyncio
+async def test_real_classifier_rejects_invalid_image_bytes():
+    repo_root = Path(__file__).resolve().parents[3]
+    model_path = repo_root / "training/output/model/snaptrip_mobilenetv4_medium_v2_best.pth"
+    classifier = MobileNetV4Classifier(
+        str(model_path),
+        "2026-05-mvp-mobilenetv4-medium-v2",
+    )
+
+    with pytest.raises(InvalidClassifierImageError):
+        await classifier.predict([{"id": "img_invalid", "bytes": b"not an image"}])
 
 
 @pytest.mark.asyncio
