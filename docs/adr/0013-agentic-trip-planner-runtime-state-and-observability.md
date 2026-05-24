@@ -73,7 +73,8 @@ The runtime enforces backend guardrails after the decision step:
 - duration changes update `plannerSessions.duration_days`, recompute `travel_end_date` from the existing start date, sync the trip-creation session, and rebuild itinerary/budget rows to the exact active day count;
 - itinerary validation rejects non-sequential days, duration mismatches, and placeholder "Added destination research" cards;
 - zero-budget requests are clarification cases and preserve the last valid budget document;
-- memo patches regenerate structured memo content instead of appending repeated raw "Latest adjustment" user text.
+- memo patches regenerate structured memo content instead of appending repeated raw "Latest adjustment" user text;
+- generic or unknown model tool names such as `upsert_document`, `write_document`, or `save_document` are rejected by schema/executor validation instead of being treated as successful no-ops.
 
 The frontend consumes planner snapshots plus replayable event rows. It renders user and assistant messages, run lifecycle rows, active spinners, document commit rows, validation rows, and final assistant summaries without exposing raw tool arguments, raw provider payloads, API keys, cookies, or raw Gemini responses.
 

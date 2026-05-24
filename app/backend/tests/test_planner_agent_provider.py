@@ -41,6 +41,25 @@ async def test_gemini_planner_provider_rejects_invalid_structured_step(monkeypat
         await provider.decide({"user_text": "broken"})
 
 
+@pytest.mark.asyncio
+async def test_gemini_planner_provider_rejects_unknown_tool_names(monkeypatch, client):
+    install_fake_gemini_planner(
+        monkeypatch,
+        '{"schema_version":"planner_agent_step.v1","intent":"initial_plan",'
+        '"assistant_text":"Done.","requires_document_edit":true,'
+        '"affected_documents":["trip_memo"],'
+        '"actions":[{"tool":"upsert_document","args":{"document_type":"trip_memo"}}]}',
+    )
+    settings = client.app.state.settings
+    settings.use_gemini = True
+    settings.gemini_api_key = "fake-key"
+
+    provider = GeminiPlannerProvider(settings)
+
+    with pytest.raises(GeminiValidationFailure):
+        await provider.decide({"user_text": "add trip memo"})
+
+
 def install_fake_gemini_planner(monkeypatch, response_text: str):
     class FakeClient:
         class models:

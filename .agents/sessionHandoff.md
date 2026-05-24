@@ -44,6 +44,7 @@
   - stopped append-only placeholder itinerary patches that produced Day 8/10/11 "Added destination research" cards,
   - changed destination questions and "say hello" style turns to answer in chat without document versions,
   - made zero-budget requests clarification cases that preserve the latest valid budget,
+  - constrained planner tool names so Gemini cannot emit unsupported generic tools like `upsert_document` and get a false-success timeline without document writes,
   - regenerated memo patches from structured route context instead of appending repeated raw "Latest adjustment" user text,
   - strengthened validation for itinerary day count/sequencing, placeholder day cards, memo adjustment spam, positive budget totals, and budget rollups,
   - added regression tests for the reported Gunung Gede transcript, provider wrapper tests with fake Gemini, and prompt contract tests.

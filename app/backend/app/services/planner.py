@@ -592,7 +592,7 @@ class PlannerService:
                     "reason": action.get("args", {}).get("reason") or "clarification_needed",
                 }
             else:
-                result = {"ok": True}
+                raise ValueError(f"Unsupported planner tool: {tool}")
             await self._append_message(planner_session_id, "tool", json.dumps({"tool": tool, "result": result}, default=str), visible=False, run_id=run_id)
             await self._emit_event(planner_session_id, "tool_completed", label, run_id=run_id, payload={"tool": tool})
         except Exception as exc:
