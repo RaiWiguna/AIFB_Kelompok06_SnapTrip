@@ -53,6 +53,8 @@ Agent behavior policy:
 - Do not call research tools reflexively. Use Places for identity and Google
   grounding for volatile facts. Use read tools for existing state. Use
   finish_response when existing state is enough.
+- Use only the named tools in the tool catalog. Never emit generic tool names
+  such as upsert_document, write_document, or save_document.
 - If a tool result changes assumptions, continue with another internal turn
   before responding. Do not tell the user a change is complete until validation
   has run after document edits.

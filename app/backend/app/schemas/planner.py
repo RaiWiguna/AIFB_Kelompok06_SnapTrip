@@ -20,6 +20,23 @@ PlannerIntent = Literal[
     "request_clarification",
     "unsupported",
 ]
+PlannerToolName = Literal[
+    "read_trip_context",
+    "read_documents",
+    "replace_trip_memo",
+    "replace_full_itinerary",
+    "replace_budget_plan",
+    "patch_itinerary_day",
+    "patch_budget_category",
+    "patch_memo_section",
+    "validate_documents",
+    "places_text_search",
+    "places_details",
+    "grounded_web_research",
+    "compute_budget_summary",
+    "finish_response",
+    "request_clarification",
+]
 
 
 class PlannerStartRequest(BaseModel):
@@ -152,7 +169,7 @@ class BudgetPlanDocumentV1(BaseModel):
 
 
 class PlannerAgentAction(BaseModel):
-    tool: str
+    tool: PlannerToolName
     args: dict = Field(default_factory=dict)
 
 
