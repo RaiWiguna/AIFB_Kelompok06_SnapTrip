@@ -4,8 +4,8 @@
 | --- | --- |
 | Document status | Active handoff |
 | Last updated | 2026-05-24 |
-| Branch | `feat/phase-11-image-classification` |
-| Purpose | Resume point after the real image-classification slice |
+| Branch | `feat/flow2-places-two-step-gemini` |
+| Purpose | Resume point after Flow 2 Places-ID grounding, two-step Gemini, and Flow 1-2 observability implementation |
 
 ## 1. Completed This Session
 
@@ -123,6 +123,24 @@
   - validated JPG/PNG bytes before GridFS persistence and enforced the maximum of 8 images across the full trip creation session,
   - preserved existing classify/session/confirm API shapes while guaranteeing all four canonical confidences per image and averaged aggregate confidences,
   - updated the category confirmation UI so per-image cards show all label confidences and the default selected category is the highest averaged label.
+- Refactored Flow 2 recommendations into Places-ID grounding plus two-step Gemini:
+  - expanded destination seeds to exactly 10 per canonical category, each with a verified Google Places place ID,
+  - added `app/backend/tools/places_seed_grounding.py` for read-only Text Search/details/audit checks,
+  - changed Places enrichment to use Place Details by ID first and Text Search fallback only when needed,
+  - expanded normalized Places context with rating count, editorial/generative summaries, website, reviews, types, primary type display name, photos, Google Maps URI, and regular/current opening hours,
+  - split Gemini recommendation behavior into `destination_seed_selection.v1`, `destination_card_finalization.v1`, and persisted `destination_recommendation.v2`,
+  - switched default Gemini model examples to `gemini-3.5-flash`,
+  - extended recommendation cards with description, review summary, normalized address/opening hours, rating, Maps/Website links, primary type label, and top photo,
+  - updated Flow 2 PRD/roadmap/ADR documentation for the new provider boundary.
+- Added backend observability for Flow 1 and Flow 2:
+  - introduced `aiObservabilityEvents` with trace IDs, TTL expiry, metadata logs, and memory/Mongo store support,
+  - enabled AI observability and raw LLM observability by default while keeping raw LLM container logs disabled unless `AI_RAW_LLM_LOGS=true`,
+  - instrumented Flow 1 session creation, image additions, classifier input preparation, classifier completion/failure, and category confirmation,
+  - instrumented Flow 2 run start, Gemini 1 prompt/response, Places Text Search/details grounding, Gemini 2 prompt/response, fallback events, and run completion,
+  - recorded rendered Gemini prompt text and raw Gemini response text in DB observability events before parsing while excluding raw image bytes, tensors, secrets, cookies, passwords, and raw Places responses,
+  - sanitized Pydantic validation errors and recommendation fallback events so raw Gemini output cannot leak to structured container logs through exception strings,
+  - fixed source-image telemetry so `added_count` counts only newly attached source-image refs,
+  - added `docs/adr/0012-ai-flow-observability-boundary.md`.
 
 ## 2. Current Repo Facts
 
@@ -143,6 +161,7 @@
 - Static frontend image assets are display fallbacks only; they must not be sent to classifier source-image APIs.
 - Phase 10 production deploy uses `snaptrip.site`, `api.snaptrip.site`, `/opt/snaptrip/hosted`, GitHub Actions, source-archive releases, Docker Compose, and Caddy.
 - Production deploy requires real Gemini and Google Places secrets before first deploy. `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY` is the only frontend-exposed provider key.
+- AI observability is enabled by default in backend config. Raw Gemini prompt/response text is stored in `aiObservabilityEvents` by default, but container logs remain metadata-only unless `AI_RAW_LLM_LOGS=true`.
 
 ## 3. Verification Run
 
@@ -265,12 +284,37 @@ Verification after real image-classification slice:
 - `npm run test:e2e` passed: 8 Playwright tests including upload, classification, category confirmation, recommendation selection, and planner preview.
 - `docker info` failed because the Docker Desktop Linux engine was not running, so optional local and remote image builds were not run.
 
+Verification after Flow 2 Places-ID/two-step Gemini refactor:
+
+- `npm run lint` passed; backend Ruff passed and frontend reported 3 existing warnings / 0 errors.
+- `npm run typecheck` passed.
+- `npm test` passed: backend 49 passed / 1 skipped, frontend 13 tests, Playwright 8 tests.
+- `npm run build` passed.
+- `npm run docker:config` passed and confirmed remote production runtime uses `GEMINI_MODEL=gemini-3.5-flash`.
+- `git diff --check` passed; Git reported only Windows line-ending normalization warnings.
+- `cd app/backend; uv run python tools/places_seed_grounding.py --help` passed.
+- `docker info` failed because the Docker Desktop Linux engine was not running, so CI compose image build steps could not be run locally.
+
+Verification after Flow 1-2 observability implementation:
+
+- `npm run lint` passed; backend Ruff passed and frontend reported 3 existing warnings / 0 errors.
+- `npm run typecheck` passed.
+- The initially observed `tests/e2e/explore-save-collections.spec.ts` failure passed when rerun directly, then the full test suite passed.
+- `npm test` passed: backend 55 passed / 1 skipped, frontend 13 tests, Playwright 8 tests.
+- `npm run build` passed.
+- `npm run docker:config` passed and confirmed remote production runtime includes `GEMINI_MODEL=gemini-3.5-flash` plus `AI_OBSERVABILITY_ENABLED=true`, `AI_RAW_LLM_OBSERVABILITY=true`, and `AI_RAW_LLM_LOGS=false`.
+- `git diff --check` and staged diff check passed; Git reported only Windows line-ending normalization warnings.
+
 ## 4. Known Caveats
 
 - Mongo runtime integration is implemented at the store level, but the current automated tests use the in-memory store. Future Phase 6 work should add testcontainers MongoDB/GridFS coverage.
 - Mongo image binary writes now use Motor GridFS bucket APIs. Initial testcontainers coverage exists, but it skipped locally because Docker Desktop was not running.
 - The real MobileNetV4 Medium classifier path is implemented for CPU inference. Mock mode remains the supported local/test default unless `CLASSIFIER_MODE=real` is explicitly configured.
 - Google Places and Gemini provider calls are disabled by default in local/test env. Tests use mocked or deterministic provider behavior.
+- Flow 2 now expects seed Place IDs to be the primary Places lookup key; Text Search is fallback for failed seed IDs and the required grounding path for Gemini-selected non-seed places.
+- `primaryTypeDisplayName` is treated as a place type/badge in UI; card titles use Places `displayName`.
+- Flow 1-2 observability events are operational/debug data and may include raw rendered Gemini prompt/response text in MongoDB by default. Treat `aiObservabilityEvents` as sensitive and rely on TTL retention rather than permanent audit storage.
+- Raw LLM text is intentionally not written to container logs by default. Validation errors and fallback events should continue using sanitized summaries, hashes, and byte counts rather than full exception strings.
 - Some frontend routes and components still use mock data modules by design for static marketing imagery, landing-page examples, invite demo boundaries, and explicit Phase 11 placeholders.
 - Google Maps frontend rendering is implemented behind `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_API_KEY`; CI/local test defaults still pass without a Maps key by using the static fallback map.
 - The planner preview endpoint requires selected recommendations and intentionally returns `422` before destination selection.
@@ -287,5 +331,6 @@ Verification after real image-classification slice:
 Continue from `.agents/implementationPhase.md`:
 
 1. Set up production VM, DNS, and GitHub Secrets using `.agents/deploymentGuide.md`, then run the first GitHub Actions deploy.
-2. Start Phase 11 planner documents, acceptance, invites, participants, and planner UI after the deployment foundation is confirmed.
-3. Keep Google Places and Gemini secrets backend-only, and keep real planner acceptance/persistence out of any deployment-only hotfixes.
+2. After the first real provider-backed deploy, inspect `aiObservabilityEvents` for one Flow 1 trace and one Flow 2 trace to confirm TTL, raw LLM DB retention, metadata-only container logs, Places lookup metadata, and fallback summaries.
+3. Start Phase 11 planner documents, acceptance, invites, participants, and planner UI after the deployment foundation is confirmed.
+4. Keep Google Places and Gemini secrets backend-only, and keep real planner acceptance/persistence out of any deployment-only hotfixes.

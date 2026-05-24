@@ -16,6 +16,9 @@ class WarningCode(StrEnum):
     missing_photos = "missing_photos"
     places_unavailable = "places_unavailable"
     places_partial_match = "places_partial_match"
+    places_text_search_fallback = "places_text_search_fallback"
+    places_text_search_grounding = "places_text_search_grounding"
+    places_id_lookup_failed = "places_id_lookup_failed"
     temporarily_closed = "temporarily_closed"
     permanently_closed = "permanently_closed"
     provider_fallback = "provider_fallback"
@@ -65,6 +68,47 @@ class ImageSnap(BaseModel):
     photo_id: str = Field(description="Backend-safe SnapTrip photo identifier.")
     url: str | None = Field(default=None, description="Backend-controlled URL for the UI to load the image.")
     attribution: str | None = Field(default=None, description="Required photo attribution when available.")
+    width_px: int | None = Field(default=None, ge=0)
+    height_px: int | None = Field(default=None, ge=0)
+
+
+class ReviewSummary(BaseModel):
+    text: str = Field(min_length=1, description="Short review summary in Bahasa Indonesia.")
+    source: SourceType = Field(default=SourceType.gemini)
+
+
+class SeedPickOutputV1(BaseModel):
+    seed_id: str = Field(min_length=1)
+    rank: int = Field(ge=1, le=2)
+    why_its_a_match: str = Field(min_length=1)
+
+
+class AlsoLikePickOutputV1(BaseModel):
+    name: str = Field(min_length=1)
+    rank: int = Field(ge=1, le=2)
+    region: str | None = None
+    search_query: str | None = None
+    why_its_a_match: str = Field(min_length=1)
+
+
+class DestinationSeedSelectionOutputV1(BaseModel):
+    schema_version: Literal["destination_seed_selection.v1"] = "destination_seed_selection.v1"
+    main_seed_picks: list[SeedPickOutputV1] = Field(min_length=2, max_length=2)
+    also_like_picks: list[AlsoLikePickOutputV1] = Field(min_length=2, max_length=2)
+
+
+class FinalizedCardOutputV1(BaseModel):
+    candidate_id: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    review_summary: str = Field(min_length=1)
+    normalized_address: str = Field(min_length=1)
+    normalized_opening_hours: str = Field(min_length=1)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class DestinationCardFinalizationOutputV1(BaseModel):
+    schema_version: Literal["destination_card_finalization.v1"] = "destination_card_finalization.v1"
+    cards: list[FinalizedCardOutputV1] = Field(min_length=4, max_length=4)
 
 
 class RecommendationWarning(BaseModel):
@@ -87,10 +131,19 @@ class RecommendationItemOutputV1(BaseModel):
     short_summary: str = Field(min_length=1, description="Concise card summary in Bahasa Indonesia.")
     description: str = Field(min_length=1, description="Polished destination description in Bahasa Indonesia.")
     match_reason: str = Field(min_length=1, description="Why this fits the user's confirmed categories.")
+    review_summary: str | None = Field(default=None, description="Short review summary in Bahasa Indonesia.")
     opening_hours_summary: OpeningHoursSummary
     estimated_cost: EstimatedCost
     location: RecommendationLocation
     image_snaps: list[ImageSnap] = Field(default_factory=list, max_length=5)
+    photo: ImageSnap | None = Field(default=None, description="Top photo for card display.")
+    rating: float | None = Field(default=None, ge=0, le=5)
+    user_rating_count: int | None = Field(default=None, ge=0)
+    website_uri: str | None = None
+    google_maps_uri: str | None = None
+    primary_type_display_name: str | None = None
+    normalized_address: str | None = None
+    normalized_opening_hours: str | None = None
     warnings: list[RecommendationWarning] = Field(default_factory=list)
     source_notes: list[SourceNote] = Field(default_factory=list)
     confidence: ConfidenceLevel = Field(description="Confidence in the recommendation card quality.")
@@ -105,7 +158,7 @@ class RecommendationItemOutputV1(BaseModel):
 
 
 class RecommendationRunOutputV1(BaseModel):
-    schema_version: Literal["destination_recommendation.v1"] = "destination_recommendation.v1"
+    schema_version: Literal["destination_recommendation.v1", "destination_recommendation.v2"] = "destination_recommendation.v2"
     summary: str = Field(min_length=1, description="Short run summary in Bahasa Indonesia.")
     items: list[RecommendationItemOutputV1] = Field(min_length=1, description="Destination cards for UI.")
 

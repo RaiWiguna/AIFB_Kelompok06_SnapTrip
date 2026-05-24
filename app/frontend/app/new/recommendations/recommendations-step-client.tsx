@@ -10,9 +10,12 @@ import {
   ArrowRight,
   Clock,
   Coins,
+  ExternalLink,
   Lightbulb,
   MapPin,
+  MessageSquareText,
   Sparkles,
+  Star,
   Target,
 } from "lucide-react"
 import { AppHeader, type AppHeaderUser } from "@/components/app-header"
@@ -230,11 +233,28 @@ function RecommendationCard({
         </p>
 
         <dl className="mt-4 space-y-3 text-[13px]">
-          <Row icon={<Clock className="size-3.5" aria-hidden />} label="Est. time" value={rec.estTime} />
+          <Row icon={<Sparkles className="size-3.5" aria-hidden />} label="Description" value={rec.description} />
           <Row icon={<Coins className="size-3.5" aria-hidden />} label="Est. budget" value={rec.estBudget} />
-          <Row icon={<MapPin className="size-3.5" aria-hidden />} label="Region" value={rec.region} />
+          {typeof rec.rating === "number" && (
+            <Row
+              icon={<Star className="size-3.5" aria-hidden />}
+              label="Rating"
+              value={`${rec.rating.toFixed(1)}${rec.userRatingCount ? ` (${rec.userRatingCount.toLocaleString()} reviews)` : ""}`}
+            />
+          )}
+          <Row icon={<MapPin className="size-3.5" aria-hidden />} label="Address" value={rec.address || rec.region} />
           {rec.hours && <Row icon={<Clock className="size-3.5" aria-hidden />} label="Hours" value={rec.hours} />}
         </dl>
+
+        {rec.reviewSummary && (
+          <div className="mt-4 rounded-xl bg-background/70 p-3 text-[12.5px] leading-relaxed text-foreground/80 ring-1 ring-border">
+            <div className="flex items-center gap-1.5 text-[12px] font-medium text-foreground">
+              <MessageSquareText className="size-3.5 text-accent" aria-hidden />
+              Review summary
+            </div>
+            <p className="mt-1.5">{rec.reviewSummary}</p>
+          </div>
+        )}
 
         <div className="mt-4 rounded-xl bg-secondary p-3 text-[12.5px] leading-relaxed text-foreground/80 ring-1 ring-border">
           <div className="flex items-center gap-1.5 text-[12px] font-medium text-foreground">
@@ -252,6 +272,31 @@ function RecommendationCard({
         )}
 
         <div className="mt-auto pt-4">
+          <div className="mb-2 grid grid-cols-2 gap-2">
+            {rec.googleMapsUri && (
+              <a
+                href={rec.googleMapsUri}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 rounded-full bg-secondary px-3 py-2 text-[12px] font-medium text-foreground ring-1 ring-border transition hover:bg-background active:scale-[0.98]"
+              >
+                <MapPin className="size-3.5" aria-hidden />
+                Maps
+                <ExternalLink className="size-3" aria-hidden />
+              </a>
+            )}
+            {rec.websiteUri && (
+              <a
+                href={rec.websiteUri}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 rounded-full bg-secondary px-3 py-2 text-[12px] font-medium text-foreground ring-1 ring-border transition hover:bg-background active:scale-[0.98]"
+              >
+                Website
+                <ExternalLink className="size-3" aria-hidden />
+              </a>
+            )}
+          </div>
           <button
             type="button"
             onClick={onToggle}

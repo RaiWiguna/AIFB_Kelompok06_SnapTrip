@@ -79,6 +79,9 @@ async def test_mongo_store_gridfs_and_recommendation_persistence_with_testcontai
             assert enrichment["id"] == "plc_test"
             assert item["run_id"] == "rec_test"
             assert "session_id_1_owner_id_1" in await store.db.recommendationRuns.index_information()
+            observability_indexes = await store.db.aiObservabilityEvents.index_information()
+            assert "expires_at_1" in observability_indexes
+            assert observability_indexes["expires_at_1"].get("expireAfterSeconds") == 0
         finally:
             await store.close()
 

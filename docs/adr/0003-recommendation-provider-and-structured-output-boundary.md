@@ -66,17 +66,18 @@ Rejected as the primary path, accepted as fallback.
 
 ## Decision
 
-SnapTrip Flow 2 will use backend-mediated provider orchestration:
+SnapTrip Flow 2 uses backend-mediated provider orchestration:
 
 1. Confirmed categories are loaded from an owned `tripCreationSessions` record.
-2. Matching curated records are loaded from `destinationSeeds`.
-3. The backend enriches each candidate through Google Places when enabled.
-4. Normalized enrichment data is cached in `placeEnrichments`.
-5. Gemini receives compact JSON context containing only confirmed categories, classifier metadata, curated seeds, normalized Places data, and UI requirements.
-6. Gemini returns schema-constrained JSON for `RecommendationRunOutputV1` through the official Google Gen AI SDK (`google-genai`).
-7. The backend validates Gemini output with Pydantic and semantic ID-reference checks.
-8. The backend persists `recommendationRuns` and `recommendationItems`.
-9. The user can persist selected recommendation item IDs on the trip creation session for later planner handoff.
+2. Matching curated records are loaded from `destinationSeeds`; every canonical category has exactly 10 seeds with verified Google Places place IDs.
+3. Gemini 1 receives seed data, classifier confidence context for all four labels, per-image confidence summaries, and available trip-creation images.
+4. Gemini 1 returns exactly two seed picks and two non-seed "you may also like" picks, each with a preserved match reason.
+5. The backend resolves non-seed picks through Places Text Search, then queries Place Details by place ID for all four picks. Seed lookups use place ID first and Text Search only as fallback.
+6. Normalized enrichment data is cached in `placeEnrichments`.
+7. Gemini 2 receives normalized Places details and preserved match reasons, then returns structured card copy, review summary, normalized address, and normalized opening-hours text.
+8. The backend validates both Gemini outputs with Pydantic and semantic ID-reference checks.
+9. The backend persists `recommendationRuns` and `recommendationItems`.
+10. The user can persist selected recommendation item IDs on the trip creation session for later planner handoff.
 
 Provider boundaries:
 
@@ -87,7 +88,11 @@ Provider boundaries:
 
 ## Prompt and Structured Output Policy
 
-The recommendation prompt is versioned as `destination_recommendation.v1`.
+Flow 2 now has three relevant schema versions:
+
+- `destination_seed_selection.v1` for Gemini 1 seed/non-seed selection.
+- `destination_card_finalization.v1` for Gemini 2 normalized card copy.
+- `destination_recommendation.v2` for persisted recommendation runs/items.
 
 System instruction requires Gemini to:
 
@@ -99,7 +104,7 @@ System instruction requires Gemini to:
 - preserve every provided `seed_id`, `place_enrichment_id`, category ID, and `photo_id`;
 - label all costs as estimates.
 
-The context payload is JSON rather than prose. It includes:
+The context payloads are JSON rather than prose. They include:
 
 - `confirmed_categories`;
 - `classifier_summary`;
@@ -110,12 +115,12 @@ The context payload is JSON rather than prose. It includes:
 Gemini configuration uses:
 
 - `response_mime_type="application/json"`;
-- `response_json_schema=RecommendationRunOutputV1`;
-- `system_instruction=destination_recommendation.v1`;
+- response JSON schemas for the active Flow 2 step;
+- step-specific system instructions for selection or finalization;
 - conservative safety settings;
 - no Google Search, URL context, code execution, or function-calling tools for Flow 2.
 
-Invalid Gemini output is repaired once with the original context, failed output, and validation errors. If repair fails, deterministic fallback cards are persisted.
+Invalid Gemini output falls back deterministically for the failed stage. Places failures fall back per candidate instead of failing the whole run.
 
 ## Persistence and API Boundary
 

@@ -371,26 +371,31 @@ Completion criteria:
 
 1. Backend receives confirmed categories.
 2. Backend loads curated Indonesian destination seeds matching those categories.
-3. Backend selects candidate destinations per category.
-4. Backend queries Google Places API for each candidate destination.
-5. Backend normalizes each Places response into internal place data.
-6. Backend combines seed data and Places data.
-7. Backend sends normalized candidate list to Gemini with a structured output schema.
-8. Gemini returns destination recommendations as structured JSON.
-9. Backend validates output.
-10. Backend persists `RecommendationRun` and `RecommendationItem` records.
-11. UI renders polished destination cards.
-12. User selects one or more destinations.
-13. User can continue to AI Trip Planner.
+3. Each canonical category has exactly 10 curated seeds, and each seed carries a verified Google Places place ID.
+4. Gemini first receives seed data, classifier aggregate confidence for all four labels, per-image confidence summaries, and available trip-creation images.
+5. Gemini first returns exactly two seed picks, two non-seed "you may also like" picks, and a match reason for each pick.
+6. Backend resolves non-seed picks through Places Text Search, then queries Place Details by place ID for all four picks.
+7. Places lookup uses place ID first for seeds, and Text Search only as fallback when a place ID lookup fails or a non-seed pick must be grounded.
+8. Backend normalizes Places details, including rating count, summaries, website, reviews, types, primary type display name, photos, Google Maps URI, and regular/current opening hours.
+9. Gemini second receives only the normalized Places details and preserved match reasons, then returns structured card copy and normalized UI fields.
+10. Backend validates both Gemini outputs and semantic references.
+11. Backend persists `RecommendationRun` and `RecommendationItem` records.
+12. UI renders polished destination cards.
+13. User selects one or more destinations.
+14. User can continue to AI Trip Planner.
 
 Destination cards must include:
 
 - Destination name.
 - Categories.
 - Description.
+- Review summary.
 - Opening hours summary.
 - Estimated cost.
+- Rating and rating count when available.
 - Location metadata.
+- Google Maps link.
+- Website link when available.
 - Image snaps.
 - Match reason.
 - Notes or warnings when data is estimated or incomplete.
