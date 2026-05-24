@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
 import secrets
 from datetime import UTC, date, datetime, timedelta
@@ -33,6 +35,8 @@ from app.services.trip_detail import (
     synthesize_memo,
 )
 
+logger = logging.getLogger(__name__)
+
 PLANNER_DOCUMENT_TYPES = ("trip_memo", "full_itinerary", "budget_plan")
 MAX_AGENT_TURNS = 8
 MAX_TOOL_CALLS = 12
@@ -63,6 +67,13 @@ TERMINAL_PLANNER_TOOLS = {"finish_response", "request_clarification"}
 
 def now() -> datetime:
     return datetime.now(UTC)
+
+
+def log_background_agent_failure(task: asyncio.Task) -> None:
+    try:
+        task.result()
+    except Exception:
+        logger.exception("Background planner agent task failed unexpectedly.")
 
 
 def duration_days(start: date, end: date) -> int:
@@ -191,8 +202,17 @@ class PlannerService:
             await self._emit_event(planner_session_id, "message_queued", "Queued follow-up message", payload={})
             return await self.snapshot(planner_session_id, user)
         await self._append_message(planner_session_id, "user", payload.text, visible=True, run_id=None)
+        if self._should_background_follow_up():
+            await self.store.update_doc("plannerSessions", planner_session_id, {"status": "working"})
+            task = asyncio.create_task(self._run_agent(session, payload.text, trigger="user_message"))
+            task.add_done_callback(log_background_agent_failure)
+            await asyncio.sleep(0)
+            return await self.snapshot(planner_session_id, user)
         await self._run_agent(session, payload.text, trigger="user_message")
         return await self.snapshot(planner_session_id, user)
+
+    def _should_background_follow_up(self) -> bool:
+        return bool(self.planner_provider.enabled and self.settings.app_env != "test")
 
     async def events(self, planner_session_id: str, user: dict[str, Any], after: int = 0) -> list[dict[str, Any]]:
         await self._owned_planner_session(planner_session_id, user)
@@ -412,7 +432,13 @@ class PlannerService:
                 run_id=run["id"],
                 payload={"error_class": exc.__class__.__name__, "safe_message": "Planner run failed"},
             )
-            raise
+            await self._append_message(
+                session["id"],
+                "assistant",
+                "I hit an issue while processing that update. The latest valid planner documents remain available; please try again with a narrower instruction.",
+                visible=True,
+                run_id=run["id"],
+            )
 
     async def _plan_step(
         self,
